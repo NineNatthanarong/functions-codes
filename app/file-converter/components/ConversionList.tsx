@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ConversionFormat, ConvertedFile, convertPdfToImages, convertHeicToImage, convertImageToImage } from '../utils/converter';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { toast } from 'sonner';
 
 interface FileItem {
     id: string;
@@ -49,16 +50,24 @@ export default function ConversionList({ files: initialFiles, onReset }: Convers
             }
 
             setFileItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'completed', result: results } : i));
+            toast.success(`Converted ${item.file.name} successfully`);
         } catch (error) {
             console.error(error);
             setFileItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'error', error: 'Conversion failed' } : i));
+            toast.error(`Failed to convert ${item.file.name}`);
         }
     };
 
     const handleConvertAll = async () => {
         setIsConvertingAll(true);
-        await Promise.all(fileItems.filter(i => i.status !== 'completed').map(convertFile));
-        setIsConvertingAll(false);
+        try {
+            await Promise.all(fileItems.filter(i => i.status !== 'completed').map(convertFile));
+            toast.success('All files processed');
+        } catch (error) {
+            // Individual errors are handled in convertFile
+        } finally {
+            setIsConvertingAll(false);
+        }
     };
 
     const handleDownload = (item: FileItem) => {
@@ -75,6 +84,7 @@ export default function ConversionList({ files: initialFiles, onReset }: Convers
                 saveAs(content, `${item.file.name.split('.')[0]}_converted.zip`);
             });
         }
+        toast.success('Download started');
     };
 
     const handleDownloadAll = async () => {
@@ -93,6 +103,7 @@ export default function ConversionList({ files: initialFiles, onReset }: Convers
         if (hasFiles) {
             const content = await zip.generateAsync({ type: 'blob' });
             saveAs(content, 'all_converted_files.zip');
+            toast.success('Download started');
         }
     };
 

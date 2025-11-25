@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { removeBackground } from '@imgly/background-removal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, Download, RefreshCw, Sparkles, Image as ImageIcon } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export default function BackgroundRemover() {
@@ -66,6 +67,7 @@ export default function BackgroundRemover() {
         reader.onload = () => {
           setProcessedImage(reader.result as string);
           setIsProcessing(false);
+          toast.success('Background removed successfully');
         };
         reader.readAsDataURL(resultBlob);
       } else {
@@ -102,13 +104,14 @@ export default function BackgroundRemover() {
           const processedDataUrl = canvas.toDataURL('image/png');
           setProcessedImage(processedDataUrl);
           setIsProcessing(false);
+          toast.success('Background removed successfully');
         };
 
         img.src = originalImage;
       }
     } catch (error) {
       console.error('Error processing image:', error);
-      alert('Failed to process image. Please try again.');
+      toast.error('Failed to process image. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -122,6 +125,7 @@ export default function BackgroundRemover() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    toast.success('Download started');
   };
 
   const resetImages = () => {

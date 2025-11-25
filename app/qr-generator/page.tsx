@@ -6,6 +6,7 @@ import QRCode from 'qrcode';
 import { motion } from 'framer-motion';
 import { Download, QrCode, Settings2, Link as LinkIcon, Type } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function QRGenerator() {
   const [text, setText] = useState('');
@@ -33,9 +34,10 @@ export default function QRGenerator() {
           errorCorrectionLevel: options.errorCorrectionLevel
         });
         setQrCodeUrl(url);
+        toast.success('QR Code generated successfully');
       } catch (err) {
         console.error('Error generating QR code:', err);
-        alert('Failed to generate QR code. Please try again.');
+        toast.error('Failed to generate QR code. Please try again.');
       } finally {
         setIsGenerating(false);
       }
@@ -50,6 +52,7 @@ export default function QRGenerator() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      toast.success('Download started');
     }
   };
 

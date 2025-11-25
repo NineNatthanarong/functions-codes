@@ -3,33 +3,89 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight, FileImage, Image as ImageIcon, QrCode, Search } from 'lucide-react';
+import { Search, FileText, Image as ImageIcon, Scissors, QrCode, Lock, Palette, Braces, Type, ArrowRightLeft, Minimize2, ArrowRight, FileImage, ShieldCheck } from 'lucide-react';
 
-const tools = [
+import { ReactNode } from 'react';
+
+interface Tool {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  href: string;
+  color: string;
+}
+
+const tools: Tool[] = [
   {
-    id: 'converter',
+    icon: <FileText className="w-6 h-6" />,
     title: 'File Converter',
-    description: 'Convert PDF, HEIC, and images to PNG, JPEG, or WEBP instantly.',
-    icon: FileImage,
+    description: 'Convert PDFs, images, and documents with ease.',
     href: '/file-converter',
     color: 'bg-blue-50 text-blue-600',
   },
   {
-    id: 'bgrm',
+    icon: <Scissors className="w-6 h-6" />,
     title: 'Background Remover',
-    description: 'Remove image backgrounds automatically with AI precision.',
-    icon: ImageIcon,
+    description: 'Remove image backgrounds instantly with AI.',
     href: '/bgrm',
     color: 'bg-purple-50 text-purple-600',
   },
   {
-    id: 'qr',
+    icon: <ImageIcon className="w-6 h-6" />,
+    title: 'Image Compressor',
+    description: 'Compress images without losing quality.',
+    href: '/image-compressor',
+    color: 'bg-pink-50 text-pink-600',
+  },
+  {
+    icon: <QrCode className="w-6 h-6" />,
     title: 'QR Generator',
-    description: 'Create custom QR codes for URLs, text, and more.',
-    icon: QrCode,
+    description: 'Create custom QR codes for any link or text.',
     href: '/qr-generator',
     color: 'bg-emerald-50 text-emerald-600',
   },
+  {
+    icon: <Braces className="w-6 h-6" />,
+    title: 'JSON Formatter',
+    description: 'Format, validate, and minify JSON data.',
+    href: '/json-formatter',
+    color: 'bg-yellow-50 text-yellow-600',
+  },
+  {
+    icon: <Lock className="w-6 h-6" />,
+    title: 'Password Generator',
+    description: 'Generate secure, random passwords.',
+    href: '/password-generator',
+    color: 'bg-red-50 text-red-600',
+  },
+  {
+    icon: <Palette className="w-6 h-6" />,
+    title: 'Color Palette',
+    description: 'Extract color palettes from images.',
+    href: '/color-palette',
+    color: 'bg-cyan-50 text-cyan-600',
+  },
+  {
+    icon: <Type className="w-6 h-6" />,
+    title: "Lorem Ipsum",
+    description: "Generate placeholder text for your designs.",
+    href: "/lorem-ipsum",
+    color: "bg-indigo-50 text-indigo-600"
+  },
+  {
+    icon: <ArrowRightLeft className="w-6 h-6" />,
+    title: "Diff Viewer",
+    description: "Compare text and highlight differences.",
+    href: "/diff-viewer",
+    color: "bg-orange-50 text-orange-600"
+  },
+  {
+    icon: <Minimize2 className="w-6 h-6" />,
+    title: "Unit Converter",
+    description: "Convert CSS units (px, rem, em, %).",
+    href: "/unit-converter",
+    color: "bg-teal-50 text-teal-600"
+  }
 ];
 
 const container = {
@@ -103,13 +159,13 @@ export default function Home() {
           className="grid grid-cols-1 md:grid-cols-3 gap-8"
         >
           {filteredTools.map((tool) => (
-            <motion.div key={tool.id} variants={item}>
+            <motion.div key={tool.href} variants={item}>
               <Link
-                href={tool.href}
-                className="group block p-8 bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 h-full flex flex-col"
+                key={tool.href}
+                href={tool.href} className="group block p-8 bg-white rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1 h-full flex flex-col"
               >
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 ${tool.color} transition-transform group-hover:scale-110 duration-300`}>
-                  <tool.icon className="w-7 h-7" strokeWidth={1.5} />
+                  {tool.icon}
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-3 group-hover:text-blue-600 transition-colors">
                   {tool.title}
