@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, RefreshCw, ShieldCheck, ShieldAlert, Shield } from 'lucide-react';
+import { Copy, RefreshCw, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 

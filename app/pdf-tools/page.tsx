@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Download, Trash2, FilePlus, Scissors, Minimize2, FileText, GripVertical } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Upload, Download, Trash2, FilePlus, Scissors, Minimize2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { PDFDocument } from 'pdf-lib';
 import { cn } from '@/lib/utils';
@@ -46,7 +46,7 @@ export default function PDFTools() {
                     name: file.name,
                     pageCount,
                 });
-            } catch (error) {
+            } catch {
                 toast.error(`Failed to load ${file.name}`);
             }
         }
@@ -75,8 +75,7 @@ export default function PDFTools() {
             const mergedPdfBytes = await mergedPdf.save();
             downloadPDF(mergedPdfBytes, 'merged.pdf');
             toast.success('PDFs merged successfully!');
-        } catch (error) {
-            console.error(error);
+        } catch {
             toast.error('Failed to merge PDFs');
         } finally {
             setIsProcessing(false);
@@ -106,8 +105,7 @@ export default function PDFTools() {
             const pdfBytes = await newPdf.save();
             downloadPDF(pdfBytes, 'split.pdf');
             toast.success('PDF split successfully!');
-        } catch (error) {
-            console.error(error);
+        } catch {
             toast.error('Failed to split PDF');
         } finally {
             setIsProcessing(false);
@@ -143,8 +141,7 @@ export default function PDFTools() {
 
             downloadPDF(pdfBytes, 'compressed.pdf');
             toast.success(`PDF compressed! Reduced by ${reduction}%`);
-        } catch (error) {
-            console.error(error);
+        } catch {
             toast.error('Failed to compress PDF');
         } finally {
             setIsProcessing(false);
@@ -152,7 +149,7 @@ export default function PDFTools() {
     };
 
     const downloadPDF = (pdfBytes: Uint8Array, filename: string) => {
-        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;

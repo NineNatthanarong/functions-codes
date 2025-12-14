@@ -51,8 +51,7 @@ export default function ConversionList({ files: initialFiles, onReset }: Convers
 
             setFileItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'completed', result: results } : i));
             toast.success(`Converted ${item.file.name} successfully`);
-        } catch (error) {
-            console.error(error);
+        } catch {
             setFileItems(prev => prev.map(i => i.id === item.id ? { ...i, status: 'error', error: 'Conversion failed' } : i));
             toast.error(`Failed to convert ${item.file.name}`);
         }

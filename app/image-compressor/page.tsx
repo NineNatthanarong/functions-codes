@@ -3,9 +3,8 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import imageCompression from 'browser-image-compression';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Upload, Download, Settings2, Image as ImageIcon, ArrowRight } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export default function ImageCompressor() {

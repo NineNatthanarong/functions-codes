@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Download, Play, Pause, Scissors, Volume2, Trash2, Music } from 'lucide-react';
+import { Upload, Download, Play, Pause, Scissors, Trash2, Music } from 'lucide-react';
 import { toast } from 'sonner';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions';
@@ -17,7 +17,7 @@ export default function AudioEditor() {
 
     const waveformRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
-    const regionsPluginRef = useRef<any>(null);
+    const regionsPluginRef = useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
 
     useEffect(() => {
         if (!waveformRef.current) return;
@@ -132,7 +132,7 @@ export default function AudioEditor() {
 
         try {
             const arrayBuffer = await audioFile.arrayBuffer();
-            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
             const sampleRate = audioBuffer.sampleRate;
@@ -368,7 +368,7 @@ export default function AudioEditor() {
                             {/* Instructions */}
                             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
                                 <p className="text-sm text-blue-800">
-                                    <strong>How to use:</strong> Click "Add Selection" to create a region, then drag the edges to adjust the trim area. Click "Trim & Download" to save the selected portion.
+                                    <strong>How to use:</strong> Click &quot;Add Selection&quot; to create a region, then drag the edges to adjust the trim area. Click &quot;Trim &amp; Download&quot; to save the selected portion.
                                 </p>
                             </div>
                         </div>

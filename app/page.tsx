@@ -124,18 +124,6 @@ const item = {
   show: { opacity: 1, y: 0 }
 };
 
-const floatAnimation = {
-  initial: { y: 0 },
-  animate: {
-    y: [-5, 5, -5],
-    transition: {
-      duration: 3,
-      repeat: Infinity,
-      ease: "easeInOut"
-    }
-  }
-};
-
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
 

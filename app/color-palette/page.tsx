@@ -4,9 +4,8 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import ColorThief from 'colorthief';
 import { motion } from 'framer-motion';
-import { Upload, Copy, RefreshCw, Palette, Image as ImageIcon } from 'lucide-react';
+import { Copy, RefreshCw, Palette, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
 
 export default function ColorPalette() {
     const [image, setImage] = useState<string | null>(null);
