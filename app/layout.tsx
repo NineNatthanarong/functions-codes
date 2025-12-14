@@ -101,8 +101,8 @@ export const metadata: Metadata = {
     creator: '@functionscodes',
   },
   icons: {
-    icon: '/favicon.ico',
-    apple: '/logo.ico',
+    icon: '/favicon.svg',
+    apple: '/favicon.svg',
   },
   manifest: '/manifest.json',
   verification: {
