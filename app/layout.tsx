@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Toaster } from 'sonner';
 import { generateWebSiteSchema, generateWebApplicationSchema, generateOrganizationSchema } from "@/lib/structured-data";
+import DiscoFavicon from "@/components/DiscoFavicon";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -146,6 +147,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
+        <DiscoFavicon />
         <Navbar />
         <main className="flex-grow pt-16">
           {children}
