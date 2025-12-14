@@ -1,0 +1,30 @@
+{
+    "name": "functions.codes - Ad-Free Tools",
+    "short_name": "functions.codes",
+    "description": "Free online tools without ads. 100% client-side, zero tracking.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#3b82f6",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/favicon.ico",
+            "sizes": "any",
+            "type": "image/x-icon"
+        },
+        {
+            "src": "/logo.ico",
+            "sizes": "any",
+            "type": "image/x-icon",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": [
+        "utilities",
+        "productivity",
+        "tools"
+    ],
+    "lang": "en-US",
+    "dir": "ltr"
+}
