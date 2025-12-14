@@ -62,7 +62,7 @@ export default function ConversionList({ files: initialFiles, onReset }: Convers
         try {
             await Promise.all(fileItems.filter(i => i.status !== 'completed').map(convertFile));
             toast.success('All files processed');
-        } catch (error) {
+        } catch {
             // Individual errors are handled in convertFile
         } finally {
             setIsConvertingAll(false);
