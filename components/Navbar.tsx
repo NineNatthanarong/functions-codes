@@ -15,12 +15,17 @@ export default function Navbar() {
     const pathname = usePathname();
 
     return (
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <nav className="fixed top-0 left-0 right-0 z-50 bg-white/85 backdrop-blur-lg border-b border-stone-200/60 shadow-[0_1px_3px_rgb(0,0,0,0.04)]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex items-center justify-between h-16">
-                    <Link href="/" className="text-xl font-bold tracking-tight text-gray-900 hover:opacity-80 transition-opacity">
-                        functions.codes
-                    </Link>
+                    <motion.div
+                        whileHover={{ rotate: -1.5, scale: 1.02 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 17 }}
+                    >
+                        <Link href="/" className="text-xl font-bold tracking-tight text-gray-900 hover:text-blue-600 transition-colors duration-300">
+                            functions.codes
+                        </Link>
+                    </motion.div>
 
                     <div className="hidden md:flex items-center gap-8">
                         {links.map((link) => (
@@ -28,7 +33,7 @@ export default function Navbar() {
                                 key={link.href}
                                 href={link.href}
                                 className={cn(
-                                    "text-sm font-medium transition-colors hover:text-gray-900 relative",
+                                    "text-sm font-medium transition-all duration-300 hover:text-gray-900 hover:scale-105 relative",
                                     pathname === link.href ? "text-gray-900" : "text-gray-500"
                                 )}
                             >
@@ -36,8 +41,8 @@ export default function Navbar() {
                                 {pathname === link.href && (
                                     <motion.div
                                         layoutId="navbar-indicator"
-                                        className="absolute -bottom-[21px] left-0 right-0 h-[2px] bg-black"
-                                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                        className="absolute -bottom-[21px] left-0 right-0 h-[2.5px] bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 rounded-full"
+                                        transition={{ type: "spring", stiffness: 350, damping: 25, bounce: 0.5 }}
                                     />
                                 )}
                             </Link>

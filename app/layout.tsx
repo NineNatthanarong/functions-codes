@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "functions.codes",
-  description: "Professional tools for modern creators.",
+  title: "functions.codes - Ad-Free Tools for Humans",
+  description: "Free online tools without 47 popup ads. Built by a broke developer who got tired of sketchy tool sites. 100% client-side, zero tracking, maximum vibes.",
 };
 
 export default function RootLayout({
@@ -26,8 +26,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body
+        suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
       >
         <Navbar />

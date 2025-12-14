@@ -85,14 +85,14 @@ export default function QRGenerator() {
             transition={{ delay: 0.2 }}
             className="lg:col-span-7 space-y-6"
           >
-            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-soft border-[1.5px] border-stone-200">
               {/* Tabs */}
-              <div className="flex gap-2 p-1 bg-gray-100 rounded-xl mb-8 w-fit">
+              <div className="flex gap-2 p-1.5 bg-stone-100 rounded-xl mb-8 w-fit">
                 <button
                   onClick={() => setActiveTab('url')}
                   className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2",
-                    activeTab === 'url' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    "px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2",
+                    activeTab === 'url' ? "bg-white text-gray-900 shadow-[0_2px_8px_-2px_rgb(0,0,0,0.1)]" : "text-gray-500 hover:text-gray-700"
                   )}
                 >
                   <LinkIcon className="w-4 h-4" />
@@ -101,8 +101,8 @@ export default function QRGenerator() {
                 <button
                   onClick={() => setActiveTab('text')}
                   className={cn(
-                    "px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2",
-                    activeTab === 'text' ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    "px-4 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2",
+                    activeTab === 'text' ? "bg-white text-gray-900 shadow-[0_2px_8px_-2px_rgb(0,0,0,0.1)]" : "text-gray-500 hover:text-gray-700"
                   )}
                 >
                   <Type className="w-4 h-4" />
@@ -112,11 +112,11 @@ export default function QRGenerator() {
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-stone-700 mb-2">
                     Content
                   </label>
                   <textarea
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all outline-none resize-none h-32 text-gray-900 placeholder:text-gray-400"
+                    className="w-full px-4 py-3 rounded-xl border-[1.5px] border-stone-200 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 transition-all outline-none resize-none h-32 text-gray-900 placeholder:text-gray-400 shadow-[inset_0_1px_2px_rgb(0,0,0,0.05)]"
                     placeholder={activeTab === 'url' ? "https://example.com" : "Enter your text here..."}
                     value={text}
                     onChange={(e) => setText(e.target.value)}
@@ -125,7 +125,7 @@ export default function QRGenerator() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-stone-700 mb-2">
                       Foreground Color
                     </label>
                     <div className="flex items-center gap-3">
@@ -136,14 +136,14 @@ export default function QRGenerator() {
                           ...prev,
                           color: { ...prev.color, dark: e.target.value }
                         }))}
-                        className="w-12 h-12 rounded-xl cursor-pointer border-0 p-1 bg-gray-50"
+                        className="w-12 h-12 rounded-xl cursor-pointer border-[1.5px] border-stone-200 p-1 bg-stone-50"
                       />
-                      <span className="text-sm text-gray-500 uppercase">{options.color.dark}</span>
+                      <span className="text-sm text-stone-600 uppercase font-mono">{options.color.dark}</span>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-stone-700 mb-2">
                       Background Color
                     </label>
                     <div className="flex items-center gap-3">
@@ -154,17 +154,19 @@ export default function QRGenerator() {
                           ...prev,
                           color: { ...prev.color, light: e.target.value }
                         }))}
-                        className="w-12 h-12 rounded-xl cursor-pointer border-0 p-1 bg-gray-50"
+                        className="w-12 h-12 rounded-xl cursor-pointer border-[1.5px] border-stone-200 p-1 bg-stone-50"
                       />
-                      <span className="text-sm text-gray-500 uppercase">{options.color.light}</span>
+                      <span className="text-sm text-stone-600 uppercase font-mono">{options.color.light}</span>
                     </div>
                   </div>
                 </div>
 
-                <button
+                <motion.button
                   onClick={generateQR}
                   disabled={isGenerating || !text.trim()}
-                  className="w-full py-4 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-200"
+                  whileTap={{ scale: 0.98 }}
+                  whileHover={{ scale: 1.02 }}
+                  className="w-full py-4 bg-emerald-600 text-white font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-[0_4px_16px_-4px_rgb(16,185,129,0.3)] hover:shadow-[0_6px_24px_-4px_rgb(16,185,129,0.4)]"
                 >
                   {isGenerating ? (
                     <>
@@ -177,7 +179,7 @@ export default function QRGenerator() {
                       Generate QR Code
                     </>
                   )}
-                </button>
+                </motion.button>
               </div>
             </div>
           </motion.div>
@@ -189,7 +191,7 @@ export default function QRGenerator() {
             transition={{ delay: 0.3 }}
             className="lg:col-span-5"
           >
-            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 h-full flex flex-col items-center justify-center text-center">
+            <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-soft border-[1.5px] border-stone-200 h-full flex flex-col items-center justify-center text-center">
               {qrCodeUrl ? (
                 <div className="space-y-8 w-full">
                   <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 inline-block">
