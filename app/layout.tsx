@@ -1,23 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Toaster } from 'sonner';
 import { generateWebSiteSchema, generateWebApplicationSchema, generateOrganizationSchema } from "@/lib/structured-data";
-import DiscoFavicon from "@/components/DiscoFavicon";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-  display: 'swap',
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-  display: 'swap',
-});
+import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 
 const SITE_URL = 'https://functions.codes';
 const SITE_NAME = 'functions.codes';
@@ -27,26 +14,31 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#000000' },
+    { media: '(prefers-color-scheme: light)', color: '#f7f4f4' },
+    { media: '(prefers-color-scheme: dark)', color: '#552834' },
   ],
 };
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "functions.codes - Ad-Free Tools for Humans",
+    default: "functions.codes — เครื่องมือออนไลน์ฟรี ใช้ในเบราว์เซอร์",
     template: "%s | functions.codes"
   },
-  description: "Free online tools without 47 popup ads. Built by a broke developer who got tired of sketchy tool sites. 100% client-side, zero tracking, maximum vibes.",
+  description: "รวมเครื่องมือออนไลน์ฟรี ใช้งานในเบราว์เซอร์ ไม่มีโฆษณา ไม่ต้องสมัครสมาชิก สำหรับนักเรียน นักศึกษา ครู และคนทำงานทุกสาย",
   keywords: [
+    'เครื่องมือออนไลน์ฟรี',
+    'แปลงไฟล์',
+    'ลบพื้นหลังรูป',
+    'บีบอัดรูป',
+    'สร้าง QR Code',
+    'JSON formatter',
     'free online tools',
     'ad-free tools',
     'file converter',
     'background remover',
     'image compressor',
     'QR code generator',
-    'JSON formatter',
     'password generator',
     'color palette',
     'lorem ipsum',
@@ -57,11 +49,8 @@ export const metadata: Metadata = {
     'markdown editor',
     'client-side tools',
     'privacy-focused tools',
-    'no tracking',
-    'developer tools',
-    'web tools'
   ],
-  authors: [{ name: 'functions.codes' }],
+  authors: [{ name: 'Natthanarong Tiangjit' }],
   creator: 'functions.codes',
   publisher: 'functions.codes',
   robots: {
@@ -77,27 +66,32 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: SITE_URL,
+    languages: {
+      'th-TH': SITE_URL,
+      'en-US': SITE_URL,
+    },
   },
   openGraph: {
     type: 'website',
-    locale: 'en_US',
+    locale: 'th_TH',
+    alternateLocale: ['en_US'],
     url: SITE_URL,
     siteName: SITE_NAME,
-    title: 'functions.codes - Ad-Free Tools for Humans',
-    description: 'Free online tools without ads. File converter, background remover, image compressor, and more. 100% client-side, zero tracking.',
+    title: 'functions.codes — เครื่องมือออนไลน์ฟรี',
+    description: 'รวมเครื่องมือออนไลน์ฟรี ใช้ในเบราว์เซอร์ ไม่มีโฆษณา เป็นส่วนตัว',
     images: [
       {
         url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'functions.codes - Ad-Free Tools for Humans',
+        alt: 'functions.codes',
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'functions.codes - Ad-Free Tools for Humans',
-    description: 'Free online tools without ads. File converter, background remover, image compressor, and more. 100% client-side, zero tracking.',
+    title: 'functions.codes — เครื่องมือออนไลน์ฟรี',
+    description: 'รวมเครื่องมือออนไลน์ฟรี ใช้ในเบราว์เซอร์ ไม่มีโฆษณา เป็นส่วนตัว',
     images: ['/og-image.png'],
     creator: '@functionscodes',
   },
@@ -106,12 +100,6 @@ export const metadata: Metadata = {
     apple: '/favicon.svg',
   },
   manifest: '/manifest.json',
-  verification: {
-    // Add your verification codes here when you set up Google Search Console, Bing Webmaster Tools, etc.
-    // google: 'your-google-verification-code',
-    // yandex: 'your-yandex-verification-code',
-    // bing: 'your-bing-verification-code',
-  },
 };
 
 export default function RootLayout({
@@ -124,9 +112,8 @@ export default function RootLayout({
   const orgSchema = generateOrganizationSchema();
 
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="th" suppressHydrationWarning>
       <head>
-        {/* Structured Data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(webSiteSchema) }}
@@ -139,21 +126,32 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }}
         />
-        {/* Preconnect to external domains for performance */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body
         suppressHydrationWarning
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+        className="antialiased min-h-screen flex flex-col bg-[var(--color-smoke-100)] text-[var(--color-ink)] thai-tight"
       >
-        <DiscoFavicon />
-        <Navbar />
-        <main className="flex-grow pt-16">
-          {children}
-        </main>
-        <Footer />
-        <Toaster richColors position="top-center" />
+        <LanguageProvider>
+          <Navbar />
+          <main className="flex-grow pt-20">
+            {children}
+          </main>
+          <Footer />
+          <Toaster
+            richColors
+            position="top-center"
+            toastOptions={{
+              style: {
+                fontFamily: "'IBM Plex Sans Thai', 'IBM Plex Sans', system-ui, sans-serif",
+                background: '#552834',
+                color: '#faf6f3',
+                border: '1.5px solid #3f1d27',
+              },
+            }}
+          />
+        </LanguageProvider>
       </body>
     </html>
   );

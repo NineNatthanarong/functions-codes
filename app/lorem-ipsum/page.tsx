@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, RefreshCw } from 'lucide-react';
+import { Copy, RefreshCw, Type } from 'lucide-react';
 import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
+import { useT } from '@/lib/i18n/LanguageProvider';
+import ToolShell, { ToolCard, FieldLabel, TextInput, SegmentedControl, PrimaryButton } from '@/components/ToolShell';
 
 const LOREM_TEXT = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
 
@@ -15,6 +16,8 @@ Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, ad
 type GenerateType = 'paragraphs' | 'sentences' | 'words';
 
 export default function LoremIpsumGenerator() {
+    const t = useT();
+    const tt = t.pages.lorem;
     const [count, setCount] = useState(3);
     const [type, setType] = useState<GenerateType>('paragraphs');
     const [generatedText, setGeneratedText] = useState('');
@@ -25,137 +28,93 @@ export default function LoremIpsumGenerator() {
 
         if (type === 'paragraphs') {
             const paragraphs = LOREM_TEXT.split('\n\n');
-            const repeatedParagraphs = [];
-            for (let i = 0; i < count; i++) {
-                repeatedParagraphs.push(paragraphs[i % paragraphs.length]);
-            }
-            result = repeatedParagraphs.join('\n\n');
+            const out: string[] = [];
+            for (let i = 0; i < count; i++) out.push(paragraphs[i % paragraphs.length]);
+            result = out.join('\n\n');
         } else if (type === 'sentences') {
             const sentences = sourceText.match(/[^.!?]+[.!?]+/g) || [];
-            const repeatedSentences = [];
-            for (let i = 0; i < count; i++) {
-                repeatedSentences.push(sentences[i % sentences.length].trim());
-            }
-            result = repeatedSentences.join(' ');
+            const out: string[] = [];
+            for (let i = 0; i < count; i++) out.push(sentences[i % sentences.length].trim());
+            result = out.join(' ');
         } else {
             const words = sourceText.replace(/[.,!?]/g, '').split(' ');
-            const repeatedWords = [];
-            for (let i = 0; i < count; i++) {
-                repeatedWords.push(words[i % words.length]);
-            }
-            result = repeatedWords.join(' ');
+            const out: string[] = [];
+            for (let i = 0; i < count; i++) out.push(words[i % words.length]);
+            result = out.join(' ');
         }
-
         setGeneratedText(result);
-        toast.success('Generated successfully');
     };
 
-    const copyToClipboard = () => {
+    useEffect(() => { generateLorem(); /* eslint-disable-next-line */ }, []);
+
+    const copy = () => {
         if (!generatedText) return;
         navigator.clipboard.writeText(generatedText);
-        toast.success('Copied to clipboard');
+        toast.success(tt.copied);
     };
 
-    // Generate on first load
-    useState(() => {
-        generateLorem();
-    });
-
     return (
-        <div className="min-h-[calc(100vh-4rem)] py-12 sm:py-20">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-12">
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4"
-                    >
-                        Lorem Ipsum Generator
-                    </motion.h1>
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-gray-500 text-lg max-w-2xl mx-auto"
-                    >
-                        Generate placeholder text for your designs.
-                    </motion.p>
+        <ToolShell
+            icon={<Type className="w-6 h-6" strokeWidth={2.1} />}
+            title={tt.title}
+            subtitle={tt.subtitle}
+            kicker="Lorem Ipsum"
+            width="wide"
+        >
+            <ToolCard className="mb-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 items-end">
+                    <div>
+                        <FieldLabel>{tt.count}</FieldLabel>
+                        <TextInput
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={count}
+                            onChange={(e) => setCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                        />
+                    </div>
+                    <div>
+                        <FieldLabel>{tt.type}</FieldLabel>
+                        <SegmentedControl
+                            value={type}
+                            onChange={setType}
+                            options={[
+                                { value: 'paragraphs', label: tt.paragraphs },
+                                { value: 'sentences', label: tt.sentences },
+                                { value: 'words', label: tt.words },
+                            ]}
+                        />
+                    </div>
+                    <div className="flex">
+                        <PrimaryButton onClick={() => { generateLorem(); toast.success(tt.successToast); }} className="w-full">
+                            <RefreshCw className="w-4 h-4" />
+                            {tt.generate}
+                        </PrimaryButton>
+                    </div>
                 </div>
+            </ToolCard>
 
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="space-y-6"
+            <ToolCard className="relative group">
+                <button
+                    onClick={copy}
+                    className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-[var(--color-wine-100)] text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)] opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={tt.copy}
                 >
-                    {/* Controls */}
-                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Count
-                                </label>
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="100"
-                                    value={count}
-                                    onChange={(e) => setCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Type
-                                </label>
-                                <div className="flex rounded-xl bg-gray-100 p-1">
-                                    {(['paragraphs', 'sentences', 'words'] as const).map((t) => (
-                                        <button
-                                            key={t}
-                                            onClick={() => setType(t)}
-                                            className={cn(
-                                                "flex-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-all capitalize",
-                                                type === t ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                                            )}
-                                        >
-                                            {t}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="flex items-end">
-                                <button
-                                    onClick={generateLorem}
-                                    className="w-full px-4 py-2 bg-gray-900 text-white font-medium rounded-xl hover:bg-gray-800 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <RefreshCw className="w-4 h-4" />
-                                    Generate
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Output */}
-                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 relative group">
-                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                                onClick={copyToClipboard}
-                                className="p-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 text-gray-600 transition-colors"
-                                title="Copy to clipboard"
-                            >
-                                <Copy className="w-4 h-4" />
-                            </button>
-                        </div>
-                        <div className="prose prose-gray max-w-none">
-                            {generatedText.split('\n\n').map((para, i) => (
-                                <p key={i} className="text-gray-600 leading-relaxed mb-4 last:mb-0">
-                                    {para}
-                                </p>
-                            ))}
-                        </div>
-                    </div>
+                    <Copy className="w-4 h-4" />
+                </button>
+                <motion.div
+                    key={generatedText}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="prose-style"
+                >
+                    {generatedText.split('\n\n').map((para, i) => (
+                        <p key={i} className="text-[15px] text-[var(--color-smoke-600)] leading-relaxed mb-4 last:mb-0">
+                            {para}
+                        </p>
+                    ))}
                 </motion.div>
-            </div>
-        </div>
+            </ToolCard>
+        </ToolShell>
     );
 }

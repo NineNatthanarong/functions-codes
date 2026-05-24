@@ -6,8 +6,12 @@ import imageCompression from 'browser-image-compression';
 import { motion } from 'framer-motion';
 import { Upload, Download, Settings2, Image as ImageIcon, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { useT } from '@/lib/i18n/LanguageProvider';
+import ToolShell, { ToolCard, FieldLabel, TextInput, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
 
 export default function ImageCompressor() {
+    const t = useT();
+    const tt = t.pages.compressor;
     const [originalImage, setOriginalImage] = useState<File | null>(null);
     const [compressedImage, setCompressedImage] = useState<File | null>(null);
     const [isCompressing, setIsCompressing] = useState(false);
@@ -17,29 +21,27 @@ export default function ImageCompressor() {
         useWebWorker: true,
     });
 
-    const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const file = e.target.files[0];
-            if (!file.type.startsWith('image/')) {
-                toast.error('Please select a valid image file');
-                return;
-            }
-            setOriginalImage(file);
-            setCompressedImage(null);
+    const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            toast.error(t.common.pleaseSelectImage);
+            return;
         }
+        setOriginalImage(file);
+        setCompressedImage(null);
     };
 
-    const compressImage = async () => {
+    const compress = async () => {
         if (!originalImage) return;
-
         setIsCompressing(true);
         try {
-            const compressedFile = await imageCompression(originalImage, options);
-            setCompressedImage(compressedFile);
-            toast.success('Image compressed successfully!');
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to compress image');
+            const result = await imageCompression(originalImage, options);
+            setCompressedImage(result);
+            toast.success(tt.successToast);
+        } catch (err) {
+            console.error(err);
+            toast.error(tt.failToast);
         } finally {
             setIsCompressing(false);
         }
@@ -58,202 +60,144 @@ export default function ImageCompressor() {
     };
 
     const formatSize = (bytes: number) => {
-        if (bytes === 0) return '0 Bytes';
+        if (bytes === 0) return '0 B';
         const k = 1024;
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const sizes = ['B', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
     return (
-        <div className="min-h-[calc(100vh-4rem)] py-12 sm:py-20">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-12">
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4"
-                    >
-                        Image Compressor
-                    </motion.h1>
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-gray-500 text-lg max-w-2xl mx-auto"
-                    >
-                        Compress PNG, JPEG, and WEBP images locally. Reduce file size without losing quality.
-                    </motion.p>
+        <ToolShell
+            icon={<ImageIcon className="w-6 h-6" strokeWidth={2.1} />}
+            title={tt.title}
+            subtitle={tt.subtitle}
+            kicker={t.tools['image-compressor'].title}
+            width="xwide"
+        >
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div className="lg:col-span-4">
+                    <ToolCard>
+                        <h2 className="text-base font-semibold text-[var(--color-wine-700)] mb-5 inline-flex items-center gap-2">
+                            <Settings2 className="w-4 h-4" />
+                            {tt.settings}
+                        </h2>
+                        <div className="space-y-5">
+                            <div>
+                                <FieldLabel hint={tt.maxSizeHint}>{tt.maxSize}</FieldLabel>
+                                <TextInput
+                                    type="number"
+                                    step="0.1"
+                                    min="0.1"
+                                    value={options.maxSizeMB}
+                                    onChange={(e) => setOptions((p) => ({ ...p, maxSizeMB: parseFloat(e.target.value) || 1 }))}
+                                />
+                            </div>
+                            <div>
+                                <FieldLabel hint={tt.maxDimHint}>{tt.maxDim}</FieldLabel>
+                                <TextInput
+                                    type="number"
+                                    step="100"
+                                    value={options.maxWidthOrHeight}
+                                    onChange={(e) => setOptions((p) => ({ ...p, maxWidthOrHeight: parseInt(e.target.value) || 1920 }))}
+                                />
+                            </div>
+
+                            <PrimaryButton onClick={compress} disabled={isCompressing || !originalImage} className="w-full py-3.5">
+                                {isCompressing ? (
+                                    <>
+                                        <Settings2 className="w-4 h-4 animate-spin" />
+                                        {tt.compressing}
+                                    </>
+                                ) : (
+                                    <>
+                                        <ArrowRight className="w-4 h-4" />
+                                        {tt.compress}
+                                    </>
+                                )}
+                            </PrimaryButton>
+                        </div>
+                    </ToolCard>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                    {/* Configuration Panel */}
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="lg:col-span-4 space-y-6"
-                    >
-                        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100">
-                            <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-                                <Settings2 className="w-5 h-5" />
-                                Settings
-                            </h2>
-
-                            <div className="space-y-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Max Size (MB)
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        min="0.1"
-                                        value={options.maxSizeMB}
-                                        onChange={(e) => setOptions(prev => ({ ...prev, maxSizeMB: parseFloat(e.target.value) || 1 }))}
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-2">Target file size in Megabytes</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Max Width/Height
-                                    </label>
-                                    <input
-                                        type="number"
-                                        step="100"
-                                        value={options.maxWidthOrHeight}
-                                        onChange={(e) => setOptions(prev => ({ ...prev, maxWidthOrHeight: parseInt(e.target.value) || 1920 }))}
-                                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all outline-none"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-2">Resize image to fit within these dimensions</p>
-                                </div>
-
-                                <button
-                                    onClick={compressImage}
-                                    disabled={isCompressing || !originalImage}
-                                    className="w-full py-4 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
+                <div className="lg:col-span-8">
+                    <ToolCard className="min-h-[460px]">
+                        {!originalImage ? (
+                            <div
+                                className="h-full border-2 border-dashed border-[var(--color-wine-200)] rounded-2xl flex flex-col items-center justify-center text-center p-12 cursor-pointer hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)] transition-all"
+                                onClick={() => document.getElementById('image-upload')?.click()}
+                            >
+                                <input
+                                    id="image-upload"
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={handleUpload}
+                                />
+                                <motion.div
+                                    animate={{ y: [0, -4, 0] }}
+                                    transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                                    className="w-20 h-20 bg-[var(--color-wine-100)] rounded-2xl flex items-center justify-center mb-5 text-[var(--color-wine-700)]"
                                 >
-                                    {isCompressing ? (
-                                        <>
-                                            <Settings2 className="w-5 h-5 animate-spin" />
-                                            Compressing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ArrowRight className="w-5 h-5" />
-                                            Compress Image
-                                        </>
-                                    )}
-                                </button>
+                                    <Upload className="w-8 h-8" />
+                                </motion.div>
+                                <h3 className="text-lg font-semibold text-[var(--color-wine-700)] mb-1.5">{tt.uploadTitle}</h3>
+                                <p className="text-[var(--color-smoke-600)] text-sm">{tt.uploadHint}</p>
                             </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Preview Panel */}
-                    <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="lg:col-span-8"
-                    >
-                        <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 min-h-[500px] flex flex-col">
-                            {!originalImage ? (
-                                <div
-                                    className="flex-grow border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-center p-12 cursor-pointer hover:border-blue-400 hover:bg-blue-50/50 transition-all"
-                                    onClick={() => document.getElementById('image-upload')?.click()}
-                                >
-                                    <input
-                                        id="image-upload"
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={handleImageUpload}
-                                    />
-                                    <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-6 text-blue-500">
-                                        <Upload className="w-10 h-10" />
-                                    </div>
-                                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Upload Image</h3>
-                                    <p className="text-gray-500">Click to browse or drag file here</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-8">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        {/* Original */}
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="font-semibold text-gray-900">Original</h3>
-                                                <span className="text-sm text-gray-500">{formatSize(originalImage.size)}</span>
-                                            </div>
-                                            <div className="relative aspect-video bg-gray-50 rounded-2xl overflow-hidden border border-gray-100">
-                                                <Image
-                                                    src={URL.createObjectURL(originalImage)}
-                                                    alt="Original"
-                                                    fill
-                                                    className="object-contain"
-                                                    unoptimized
-                                                />
-                                            </div>
+                        ) : (
+                            <div className="space-y-7">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-semibold text-[var(--color-wine-700)]">{tt.original}</h3>
+                                            <span className="text-[12.5px] text-[var(--color-smoke-600)]">{formatSize(originalImage.size)}</span>
                                         </div>
-
-                                        {/* Compressed */}
-                                        <div className="space-y-4">
-                                            <div className="flex items-center justify-between">
-                                                <h3 className="font-semibold text-gray-900">Compressed</h3>
-                                                {compressedImage && (
-                                                    <span className="text-sm text-green-600 font-medium">
-                                                        {formatSize(compressedImage.size)}
-                                                        <span className="ml-2 text-xs bg-green-100 px-2 py-1 rounded-full">
-                                                            -{Math.round((1 - compressedImage.size / originalImage.size) * 100)}%
-                                                        </span>
+                                        <div className="relative aspect-video bg-[var(--color-wine-50)] rounded-2xl overflow-hidden border border-[var(--color-wine-100)]">
+                                            <Image src={URL.createObjectURL(originalImage)} alt="orig" fill className="object-contain" unoptimized />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="font-semibold text-[var(--color-wine-700)]">{tt.compressed}</h3>
+                                            {compressedImage && (
+                                                <span className="text-[12.5px] font-semibold text-[#3d6a4a] inline-flex items-center gap-2">
+                                                    {formatSize(compressedImage.size)}
+                                                    <span className="text-[11px] bg-[#dbe8d3] text-[#2c4a26] px-2 py-0.5 rounded-full">
+                                                        −{Math.round((1 - compressedImage.size / originalImage.size) * 100)}%
                                                     </span>
-                                                )}
-                                            </div>
-                                            <div className="relative aspect-video bg-gray-50 rounded-2xl overflow-hidden border border-gray-100 flex items-center justify-center">
-                                                {compressedImage ? (
-                                                    <Image
-                                                        src={URL.createObjectURL(compressedImage)}
-                                                        alt="Compressed"
-                                                        fill
-                                                        className="object-contain"
-                                                        unoptimized
-                                                    />
-                                                ) : (
-                                                    <div className="text-gray-400 text-center">
-                                                        <ImageIcon className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                                                        <p className="text-sm">Waiting for compression...</p>
-                                                    </div>
-                                                )}
-                                            </div>
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="relative aspect-video bg-[var(--color-wine-50)] rounded-2xl overflow-hidden border border-[var(--color-wine-100)] flex items-center justify-center">
+                                            {compressedImage ? (
+                                                <Image src={URL.createObjectURL(compressedImage)} alt="comp" fill className="object-contain" unoptimized />
+                                            ) : (
+                                                <div className="text-[var(--color-smoke-600)] text-center">
+                                                    <ImageIcon className="w-10 h-10 mx-auto mb-2 text-[var(--color-wine-300)]" />
+                                                    <p className="text-[12.5px]">{tt.waiting}</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-
-                                    <div className="flex gap-4">
-                                        <button
-                                            onClick={() => {
-                                                setOriginalImage(null);
-                                                setCompressedImage(null);
-                                            }}
-                                            className="flex-1 py-4 bg-gray-100 text-gray-700 font-medium rounded-xl hover:bg-gray-200 transition-all"
-                                        >
-                                            Reset
-                                        </button>
-                                        <button
-                                            onClick={downloadImage}
-                                            disabled={!compressedImage}
-                                            className="flex-1 py-4 bg-green-600 text-white font-medium rounded-xl hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-green-200"
-                                        >
-                                            <Download className="w-5 h-5" />
-                                            Download
-                                        </button>
-                                    </div>
                                 </div>
-                            )}
-                        </div>
-                    </motion.div>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => { setOriginalImage(null); setCompressedImage(null); }}
+                                        className="flex-1 py-3.5 rounded-2xl bg-[var(--color-wine-50)] border-[1.5px] border-[var(--color-wine-100)] text-[var(--color-wine-700)] font-semibold text-[14px] hover:bg-[var(--color-wine-100)] transition-colors"
+                                    >
+                                        {t.common.reset}
+                                    </button>
+                                    <SecondaryButton onClick={downloadImage} disabled={!compressedImage} className="flex-1 py-3.5">
+                                        <Download className="w-4 h-4" />
+                                        {t.common.download}
+                                    </SecondaryButton>
+                                </div>
+                            </div>
+                        )}
+                    </ToolCard>
                 </div>
             </div>
-        </div>
+        </ToolShell>
     );
 }

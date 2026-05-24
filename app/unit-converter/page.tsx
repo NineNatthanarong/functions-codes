@@ -2,10 +2,14 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Copy } from 'lucide-react';
+import { Copy, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useT } from '@/lib/i18n/LanguageProvider';
+import ToolShell, { ToolCard } from '@/components/ToolShell';
 
 export default function UnitConverter() {
+    const t = useT();
+    const tt = t.pages.units;
     const [px, setPx] = useState<number>(16);
     const [baseSize, setBaseSize] = useState<number>(16);
     const [rem, setRem] = useState<number>(1);
@@ -28,133 +32,102 @@ export default function UnitConverter() {
 
     const handleBaseChange = (val: number) => {
         setBaseSize(val);
-        // Recalculate from current PX
         setRem(px / val);
         setEm(px / val);
         setPercent((px / val) * 100);
     };
 
-    const copyToClipboard = (text: string, label: string) => {
+    const copy = (text: string, label: string) => {
         navigator.clipboard.writeText(text);
-        toast.success(`Copied ${label}`);
+        toast.success(`${tt.copiedToast} ${label}`);
     };
 
     return (
-        <div className="min-h-[calc(100vh-4rem)] py-12 sm:py-20">
-            <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-12">
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4"
-                    >
-                        CSS Unit Converter
-                    </motion.h1>
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-gray-500 text-lg max-w-2xl mx-auto"
-                    >
-                        Convert between Pixels, REM, EM, and Percentage.
-                    </motion.p>
+        <ToolShell
+            icon={<Minimize2 className="w-6 h-6" strokeWidth={2.1} />}
+            title={tt.title}
+            subtitle={tt.subtitle}
+            kicker="CSS"
+            width="wide"
+        >
+            <div className="space-y-6">
+                <ToolCard className="max-w-sm mx-auto text-center">
+                    <label className="block text-[12.5px] font-semibold tracking-wide text-[var(--color-wine-700)] mb-3">
+                        {tt.baseLabel}
+                    </label>
+                    <div className="flex items-center justify-center gap-2">
+                        <input
+                            type="number"
+                            value={baseSize}
+                            onChange={(e) => handleBaseChange(Number(e.target.value))}
+                            className="w-28 h-12 px-3 text-center rounded-2xl border-[1.5px] border-[var(--color-wine-100)] bg-[var(--color-wine-50)] focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)] font-mono text-lg text-[var(--color-wine-800)]"
+                        />
+                        <span className="text-[var(--color-smoke-600)] text-sm">px</span>
+                    </div>
+                </ToolCard>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <NumberCard label={tt.pixels} unit="px" value={px} onChange={handlePxChange} onCopy={() => copy(`${px}px`, 'px')} />
+                    <NumberCard label="REM" unit="rem" value={rem} step={0.0625} onChange={handleRemChange} onCopy={() => copy(`${rem}rem`, 'rem')} />
                 </div>
 
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="space-y-8"
-                >
-                    {/* Base Configuration */}
-                    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 max-w-sm mx-auto">
-                        <label className="block text-sm font-medium text-gray-700 mb-2 text-center">
-                            Base Font Size (px)
-                        </label>
-                        <div className="flex items-center justify-center gap-2">
-                            <input
-                                type="number"
-                                value={baseSize}
-                                onChange={(e) => handleBaseChange(Number(e.target.value))}
-                                className="w-24 px-3 py-2 text-center rounded-lg border border-gray-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none font-mono"
-                            />
-                            <span className="text-gray-400 text-sm">px</span>
-                        </div>
-                    </div>
-
-                    {/* Converters */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        {/* PX Input */}
-                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-4">
-                            <label className="text-lg font-semibold text-gray-900">Pixels</label>
-                            <div className="relative w-full max-w-[200px]">
-                                <input
-                                    type="number"
-                                    value={px}
-                                    onChange={(e) => handlePxChange(Number(e.target.value))}
-                                    className="w-full px-4 py-3 text-2xl text-center font-bold text-gray-900 rounded-xl border border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
-                                />
-                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">px</span>
-                            </div>
-                            <button
-                                onClick={() => copyToClipboard(`${px}px`, 'Pixels')}
-                                className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
-                            >
-                                <Copy className="w-4 h-4" /> Copy
-                            </button>
-                        </div>
-
-                        {/* REM Input */}
-                        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col items-center justify-center gap-4">
-                            <label className="text-lg font-semibold text-gray-900">REM</label>
-                            <div className="relative w-full max-w-[200px]">
-                                <input
-                                    type="number"
-                                    value={rem}
-                                    onChange={(e) => handleRemChange(Number(e.target.value))}
-                                    step="0.0625"
-                                    className="w-full px-4 py-3 text-2xl text-center font-bold text-gray-900 rounded-xl border border-gray-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 outline-none transition-all"
-                                />
-                                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">rem</span>
-                            </div>
-                            <button
-                                onClick={() => copyToClipboard(`${rem}rem`, 'REM')}
-                                className="text-sm text-purple-600 hover:text-purple-700 font-medium flex items-center gap-1"
-                            >
-                                <Copy className="w-4 h-4" /> Copy
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Read Only Conversions */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-medium text-gray-500 mb-1">EM</p>
-                                <p className="text-2xl font-bold text-gray-900">{em.toFixed(3)}<span className="text-base font-normal text-gray-400 ml-1">em</span></p>
-                            </div>
-                            <button
-                                onClick={() => copyToClipboard(`${em.toFixed(3)}em`, 'EM')}
-                                className="p-2 bg-white rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
-                            >
-                                <Copy className="w-4 h-4 text-gray-600" />
-                            </button>
-                        </div>
-                        <div className="bg-gray-50 rounded-2xl p-6 border border-gray-100 flex items-center justify-between">
-                            <div>
-                                <p className="text-sm font-medium text-gray-500 mb-1">Percentage</p>
-                                <p className="text-2xl font-bold text-gray-900">{percent.toFixed(1)}<span className="text-base font-normal text-gray-400 ml-1">%</span></p>
-                            </div>
-                            <button
-                                onClick={() => copyToClipboard(`${percent.toFixed(1)}%`, 'Percentage')}
-                                className="p-2 bg-white rounded-lg shadow-sm hover:bg-gray-100 transition-colors"
-                            >
-                                <Copy className="w-4 h-4 text-gray-600" />
-                            </button>
-                        </div>
-                    </div>
-                </motion.div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <ReadOnlyCard label="EM" value={em.toFixed(3)} unit="em" onCopy={() => copy(`${em.toFixed(3)}em`, 'em')} />
+                    <ReadOnlyCard label="%" value={percent.toFixed(1)} unit="%" onCopy={() => copy(`${percent.toFixed(1)}%`, '%')} />
+                </div>
             </div>
+        </ToolShell>
+    );
+}
+
+function NumberCard({ label, unit, value, step, onChange, onCopy }: {
+    label: string; unit: string; value: number; step?: number;
+    onChange: (v: number) => void; onCopy: () => void;
+}) {
+    return (
+        <motion.div
+            whileHover={{ y: -2 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="bg-white rounded-3xl p-7 border-[1.5px] border-[var(--color-wine-100)] shadow-soft flex flex-col items-center gap-4"
+        >
+            <label className="text-base font-semibold text-[var(--color-wine-700)]">{label}</label>
+            <div className="relative w-full max-w-[200px]">
+                <input
+                    type="number"
+                    value={value}
+                    step={step}
+                    onChange={(e) => onChange(Number(e.target.value))}
+                    className="w-full px-4 py-3 text-2xl text-center font-bold text-[var(--color-wine-800)] rounded-2xl border-[1.5px] border-[var(--color-wine-100)] focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)] transition-all"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--color-smoke-600)] text-sm font-medium">{unit}</span>
+            </div>
+            <button
+                onClick={onCopy}
+                className="text-[12.5px] text-[var(--color-wine-600)] hover:text-[var(--color-wine-700)] font-semibold inline-flex items-center gap-1.5"
+            >
+                <Copy className="w-3.5 h-3.5" />
+                Copy
+            </button>
+        </motion.div>
+    );
+}
+
+function ReadOnlyCard({ label, value, unit, onCopy }: { label: string; value: string; unit: string; onCopy: () => void }) {
+    return (
+        <div className="bg-[var(--color-wine-50)] rounded-3xl p-6 border-[1.5px] border-[var(--color-wine-100)] flex items-center justify-between">
+            <div>
+                <p className="text-[12px] tracking-[0.18em] uppercase font-semibold text-[var(--color-smoke-600)] mb-1">{label}</p>
+                <p className="text-2xl font-bold text-[var(--color-wine-800)]">
+                    {value}<span className="text-base font-normal text-[var(--color-smoke-600)] ml-1">{unit}</span>
+                </p>
+            </div>
+            <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={onCopy}
+                className="p-2.5 bg-white rounded-xl border border-[var(--color-wine-100)] hover:bg-[var(--color-wine-100)] transition-colors"
+            >
+                <Copy className="w-4 h-4 text-[var(--color-wine-700)]" />
+            </motion.button>
         </div>
     );
 }

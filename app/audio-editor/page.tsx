@@ -2,12 +2,16 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, Download, Play, Pause, Scissors, Trash2, Music } from 'lucide-react';
+import { Upload, Download, Play, Pause, Scissors, Trash2, Music, Mic } from 'lucide-react';
 import { toast } from 'sonner';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions';
+import { useT } from '@/lib/i18n/LanguageProvider';
+import ToolShell, { ToolCard, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
 
 export default function AudioEditor() {
+    const t = useT();
+    const tt = t.pages.audio;
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -22,12 +26,11 @@ export default function AudioEditor() {
     useEffect(() => {
         if (!waveformRef.current) return;
 
-        // Initialize WaveSurfer
         const wavesurfer = WaveSurfer.create({
             container: waveformRef.current,
-            waveColor: '#fbbf24',
-            progressColor: '#f59e0b',
-            cursorColor: '#ea580c',
+            waveColor: '#c98a98',
+            progressColor: '#552834',
+            cursorColor: '#3f1d27',
             barWidth: 2,
             barGap: 1,
             barRadius: 2,
@@ -36,15 +39,10 @@ export default function AudioEditor() {
             backend: 'WebAudio',
         });
 
-        // Initialize Regions Plugin
         const regions = wavesurfer.registerPlugin(RegionsPlugin.create());
         regionsPluginRef.current = regions;
 
-        wavesurfer.on('ready', () => {
-            setDuration(wavesurfer.getDuration());
-            setIsLoading(false);
-        });
-
+        wavesurfer.on('ready', () => { setDuration(wavesurfer.getDuration()); setIsLoading(false); });
         wavesurfer.on('play', () => setIsPlaying(true));
         wavesurfer.on('pause', () => setIsPlaying(false));
         wavesurfer.on('finish', () => setIsPlaying(false));
@@ -52,26 +50,17 @@ export default function AudioEditor() {
 
         regions.on('region-created', () => setHasRegion(true));
         regions.on('region-removed', () => {
-            if (regions.getRegions().length === 0) {
-                setHasRegion(false);
-            }
+            if (regions.getRegions().length === 0) setHasRegion(false);
         });
 
         wavesurferRef.current = wavesurfer;
-
-        return () => {
-            wavesurfer.destroy();
-        };
+        return () => { wavesurfer.destroy(); };
     }, []);
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
-        if (!file.type.startsWith('audio/')) {
-            toast.error('Please select a valid audio file');
-            return;
-        }
+        if (!file.type.startsWith('audio/')) { toast.error(t.common.pleaseSelectAudio); return; }
 
         setAudioFile(file);
         setIsLoading(true);
@@ -80,151 +69,96 @@ export default function AudioEditor() {
         if (wavesurferRef.current) {
             const url = URL.createObjectURL(file);
             await wavesurferRef.current.load(url);
-            toast.success('Audio loaded successfully!');
+            toast.success(tt.loadedToast);
         }
     };
 
-    const togglePlayPause = () => {
-        if (wavesurferRef.current) {
-            wavesurferRef.current.playPause();
-        }
-    };
+    const togglePlay = () => wavesurferRef.current?.playPause();
 
     const addRegion = () => {
         if (!wavesurferRef.current || !regionsPluginRef.current) return;
-
-        // Clear existing regions
         regionsPluginRef.current.clearRegions();
-
-        // Add new region in the middle third of the audio
-        const duration = wavesurferRef.current.getDuration();
-        const start = duration * 0.33;
-        const end = duration * 0.66;
-
+        const dur = wavesurferRef.current.getDuration();
         regionsPluginRef.current.addRegion({
-            start,
-            end,
-            color: 'rgba(251, 191, 36, 0.3)',
+            start: dur * 0.33,
+            end: dur * 0.66,
+            color: 'rgba(85, 40, 52, 0.22)',
             drag: true,
             resize: true,
         });
-
-        toast.success('Selection added! Drag edges to adjust');
+        toast.success(tt.addedToast);
     };
 
     const trimAudio = async () => {
         if (!wavesurferRef.current || !regionsPluginRef.current || !audioFile) {
-            toast.error('Please select a region to trim');
-            return;
+            toast.error(tt.addFirstToast); return;
         }
-
         const regions = regionsPluginRef.current.getRegions();
-        if (regions.length === 0) {
-            toast.error('Please add a selection first');
-            return;
-        }
+        if (regions.length === 0) { toast.error(tt.addFirstToast); return; }
 
         const region = regions[0];
-        const start = region.start;
-        const end = region.end;
-
-        toast.info('Trimming audio...');
+        toast.info(tt.trimmingToast);
 
         try {
-            const arrayBuffer = await audioFile.arrayBuffer();
-            const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-
-            const sampleRate = audioBuffer.sampleRate;
-            const startSample = Math.floor(start * sampleRate);
-            const endSample = Math.floor(end * sampleRate);
+            const buf = await audioFile.arrayBuffer();
+            const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+            const audioBuffer = await ctx.decodeAudioData(buf);
+            const sr = audioBuffer.sampleRate;
+            const startSample = Math.floor(region.start * sr);
+            const endSample = Math.floor(region.end * sr);
             const newLength = endSample - startSample;
+            const trimmed = ctx.createBuffer(audioBuffer.numberOfChannels, newLength, sr);
 
-            const trimmedBuffer = audioContext.createBuffer(
-                audioBuffer.numberOfChannels,
-                newLength,
-                sampleRate
-            );
-
-            for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
-                const oldData = audioBuffer.getChannelData(channel);
-                const newData = trimmedBuffer.getChannelData(channel);
-                for (let i = 0; i < newLength; i++) {
-                    newData[i] = oldData[startSample + i];
-                }
+            for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+                const oldData = audioBuffer.getChannelData(ch);
+                const newData = trimmed.getChannelData(ch);
+                for (let i = 0; i < newLength; i++) newData[i] = oldData[startSample + i];
             }
 
-            // Convert to WAV
-            const wav = audioBufferToWav(trimmedBuffer);
+            const wav = audioBufferToWav(trimmed);
             const blob = new Blob([wav], { type: 'audio/wav' });
-            downloadAudio(blob, 'trimmed.wav');
-
-            toast.success('Audio trimmed successfully!');
-        } catch (error) {
-            console.error(error);
-            toast.error('Failed to trim audio');
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'trimmed.wav';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            toast.success(tt.trimSuccessToast);
+        } catch (err) {
+            console.error(err);
+            toast.error(tt.trimFailToast);
         }
     };
 
-    const downloadAudio = (blob: Blob, filename: string) => {
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    };
-
-    // Helper function to convert AudioBuffer to WAV
     const audioBufferToWav = (buffer: AudioBuffer): ArrayBuffer => {
         const length = buffer.length * buffer.numberOfChannels * 2 + 44;
         const arrayBuffer = new ArrayBuffer(length);
         const view = new DataView(arrayBuffer);
         const channels: Float32Array[] = [];
-        let offset = 0;
-        let pos = 0;
+        let offset = 0, pos = 0;
 
-        // Write WAV header
-        const setUint16 = (data: number) => {
-            view.setUint16(pos, data, true);
-            pos += 2;
-        };
-        const setUint32 = (data: number) => {
-            view.setUint32(pos, data, true);
-            pos += 4;
-        };
+        const setUint16 = (d: number) => { view.setUint16(pos, d, true); pos += 2; };
+        const setUint32 = (d: number) => { view.setUint32(pos, d, true); pos += 4; };
 
-        setUint32(0x46464952); // "RIFF"
-        setUint32(length - 8); // file length - 8
-        setUint32(0x45564157); // "WAVE"
-        setUint32(0x20746d66); // "fmt " chunk
-        setUint32(16); // length = 16
-        setUint16(1); // PCM (uncompressed)
-        setUint16(buffer.numberOfChannels);
-        setUint32(buffer.sampleRate);
-        setUint32(buffer.sampleRate * 2 * buffer.numberOfChannels); // avg. bytes/sec
-        setUint16(buffer.numberOfChannels * 2); // block-align
-        setUint16(16); // 16-bit
-        setUint32(0x61746164); // "data" - chunk
-        setUint32(length - pos - 4); // chunk length
+        setUint32(0x46464952); setUint32(length - 8); setUint32(0x45564157);
+        setUint32(0x20746d66); setUint32(16); setUint16(1);
+        setUint16(buffer.numberOfChannels); setUint32(buffer.sampleRate);
+        setUint32(buffer.sampleRate * 2 * buffer.numberOfChannels);
+        setUint16(buffer.numberOfChannels * 2); setUint16(16);
+        setUint32(0x61746164); setUint32(length - pos - 4);
 
-        // Write interleaved data
-        for (let i = 0; i < buffer.numberOfChannels; i++) {
-            channels.push(buffer.getChannelData(i));
-        }
+        for (let i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
 
         while (pos < length) {
             for (let i = 0; i < buffer.numberOfChannels; i++) {
-                let sample = Math.max(-1, Math.min(1, channels[i][offset]));
-                sample = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-                view.setInt16(pos, sample, true);
-                pos += 2;
+                let s = Math.max(-1, Math.min(1, channels[i][offset]));
+                s = s < 0 ? s * 0x8000 : s * 0x7fff;
+                view.setInt16(pos, s, true); pos += 2;
             }
             offset++;
         }
-
         return arrayBuffer;
     };
 
@@ -233,148 +167,112 @@ export default function AudioEditor() {
         setHasRegion(false);
         setCurrentTime(0);
         setDuration(0);
-        if (wavesurferRef.current) {
-            wavesurferRef.current.empty();
-        }
-        if (regionsPluginRef.current) {
-            regionsPluginRef.current.clearRegions();
-        }
+        wavesurferRef.current?.empty();
+        regionsPluginRef.current?.clearRegions();
     };
 
-    const formatTime = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    const formatTime = (sec: number) => {
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s.toString().padStart(2, '0')}`;
     };
 
     return (
-        <div className="min-h-[calc(100vh-4rem)] py-12 sm:py-20">
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="text-center mb-12">
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4"
+        <ToolShell
+            icon={<Mic className="w-6 h-6" strokeWidth={2.1} />}
+            title={tt.title}
+            subtitle={tt.subtitle}
+            kicker="Audio"
+            width="wide"
+        >
+            <ToolCard>
+                {!audioFile && (
+                    <div
+                        className="border-2 border-dashed border-[var(--color-wine-200)] rounded-2xl p-12 text-center cursor-pointer hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)] transition-all"
+                        onClick={() => document.getElementById('audio-upload')?.click()}
                     >
-                        Audio Editor
-                    </motion.h1>
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="text-gray-500 text-lg max-w-2xl mx-auto"
-                    >
-                        Edit audio with beautiful waveform visualization. Trim, select, and export.
-                    </motion.p>
-                </div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100"
-                >
-                    {/* Upload Area */}
-                    {!audioFile && (
-                        <div
-                            className="border-2 border-dashed border-gray-200 rounded-2xl p-12 text-center cursor-pointer hover:border-amber-400 hover:bg-amber-50/50 transition-all"
-                            onClick={() => document.getElementById('audio-upload')?.click()}
+                        <input id="audio-upload" type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
+                        <motion.div
+                            animate={{ y: [0, -4, 0] }}
+                            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+                            className="w-20 h-20 bg-[var(--color-wine-100)] rounded-2xl flex items-center justify-center mb-5 mx-auto text-[var(--color-wine-700)]"
                         >
-                            <input
-                                id="audio-upload"
-                                type="file"
-                                accept="audio/*"
-                                className="hidden"
-                                onChange={handleFileUpload}
-                            />
-                            <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mb-6 mx-auto text-amber-500">
-                                <Upload className="w-10 h-10" />
-                            </div>
-                            <h3 className="text-xl font-semibold text-gray-900 mb-2">Upload Audio File</h3>
-                            <p className="text-gray-500">Click to browse or drag audio file here</p>
-                            <p className="text-sm text-gray-400 mt-2">Supports MP3, WAV, OGG, M4A</p>
-                        </div>
-                    )}
+                            <Upload className="w-8 h-8" />
+                        </motion.div>
+                        <h3 className="text-lg font-semibold text-[var(--color-wine-700)] mb-1.5">{tt.uploadTitle}</h3>
+                        <p className="text-[var(--color-smoke-600)] text-sm">{tt.uploadHint}</p>
+                        <p className="text-[12px] text-[var(--color-smoke-600)]/80 mt-2">{tt.formats}</p>
+                    </div>
+                )}
 
-                    {/* Waveform & Controls */}
-                    {audioFile && (
-                        <div className="space-y-6">
-                            {/* File Info */}
-                            <div className="flex items-center justify-between p-4 bg-amber-50 rounded-xl">
-                                <div className="flex items-center gap-3">
-                                    <Music className="w-6 h-6 text-amber-600" />
-                                    <div>
-                                        <p className="font-medium text-gray-900">{audioFile.name}</p>
-                                        <p className="text-sm text-gray-500">
-                                            {formatTime(duration)} · {(audioFile.size / 1024 / 1024).toFixed(2)} MB
-                                        </p>
-                                    </div>
-                                </div>
-                                <button
-                                    onClick={clearAudio}
-                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            {/* Waveform */}
-                            <div className="bg-gradient-to-b from-amber-50 to-white rounded-2xl p-6 border border-amber-100">
-                                {isLoading && (
-                                    <div className="flex items-center justify-center h-32">
-                                        <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                                    </div>
-                                )}
-                                <div ref={waveformRef} className={isLoading ? 'hidden' : ''} />
-
-                                {/* Timeline */}
-                                <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
-                                    <span>{formatTime(currentTime)}</span>
-                                    <span>{formatTime(duration)}</span>
+                {audioFile && (
+                    <div className="space-y-6">
+                        <div className="flex items-center justify-between p-4 bg-[var(--color-wine-50)] rounded-2xl border border-[var(--color-wine-100)]">
+                            <div className="flex items-center gap-3">
+                                <Music className="w-5 h-5 text-[var(--color-wine-700)]" />
+                                <div>
+                                    <p className="font-semibold text-[var(--color-wine-700)] truncate max-w-[260px]">{audioFile.name}</p>
+                                    <p className="text-[12px] text-[var(--color-smoke-600)]">
+                                        {formatTime(duration)} · {(audioFile.size / 1024 / 1024).toFixed(2)} MB
+                                    </p>
                                 </div>
                             </div>
+                            <button
+                                onClick={clearAudio}
+                                className="p-2 text-[#a4364c] hover:bg-[#fbe3e7] rounded-xl transition-colors"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
 
-                            {/* Playback Controls */}
-                            <div className="flex items-center justify-center gap-4">
-                                <button
-                                    onClick={togglePlayPause}
-                                    disabled={isLoading}
-                                    className="w-16 h-16 bg-gradient-to-r from-amber-500 to-yellow-500 text-white rounded-full hover:from-amber-600 hover:to-yellow-600 disabled:opacity-50 transition-all flex items-center justify-center shadow-lg shadow-amber-200"
-                                >
-                                    {isPlaying ? <Pause className="w-7 h-7" /> : <Play className="w-7 h-7 ml-1" />}
-                                </button>
-                            </div>
-
-                            {/* Editing Controls */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <button
-                                    onClick={addRegion}
-                                    disabled={isLoading}
-                                    className="py-3 px-6 bg-amber-100 text-amber-700 font-medium rounded-xl hover:bg-amber-200 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                                >
-                                    <Scissors className="w-5 h-5" />
-                                    Add Selection
-                                </button>
-                                <button
-                                    onClick={trimAudio}
-                                    disabled={isLoading || !hasRegion}
-                                    className="py-3 px-6 bg-gradient-to-r from-amber-600 to-yellow-600 text-white font-medium rounded-xl hover:from-amber-700 hover:to-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 shadow-lg shadow-amber-200"
-                                >
-                                    <Download className="w-5 h-5" />
-                                    Trim & Download
-                                </button>
-                            </div>
-
-                            {/* Instructions */}
-                            <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
-                                <p className="text-sm text-blue-800">
-                                    <strong>How to use:</strong> Click &quot;Add Selection&quot; to create a region, then drag the edges to adjust the trim area. Click &quot;Trim &amp; Download&quot; to save the selected portion.
-                                </p>
+                        <div className="bg-[var(--color-wine-50)] rounded-2xl p-6 border border-[var(--color-wine-100)]">
+                            {isLoading && (
+                                <div className="flex items-center justify-center h-32">
+                                    <div className="w-7 h-7 border-4 border-[var(--color-wine-700)] border-t-transparent rounded-full animate-spin" />
+                                </div>
+                            )}
+                            <div ref={waveformRef} className={isLoading ? 'hidden' : ''} />
+                            <div className="flex items-center justify-between mt-4 text-[12.5px] text-[var(--color-smoke-600)]">
+                                <span className="font-mono">{formatTime(currentTime)}</span>
+                                <span className="font-mono">{formatTime(duration)}</span>
                             </div>
                         </div>
-                    )}
-                </motion.div>
-            </div>
-        </div>
+
+                        <div className="flex items-center justify-center">
+                            <motion.button
+                                whileTap={{ scale: 0.92 }}
+                                whileHover={{ scale: 1.04 }}
+                                onClick={togglePlay}
+                                disabled={isLoading}
+                                className="w-16 h-16 bg-[var(--color-wine-700)] text-[var(--color-cream)] rounded-full hover:bg-[var(--color-wine-600)] disabled:opacity-50 transition-colors flex items-center justify-center shadow-lift"
+                            >
+                                {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
+                            </motion.button>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <SecondaryButton onClick={addRegion} disabled={isLoading} className="py-3">
+                                <Scissors className="w-4 h-4" />
+                                {tt.addRegion}
+                            </SecondaryButton>
+                            <PrimaryButton onClick={trimAudio} disabled={isLoading || !hasRegion} className="py-3">
+                                <Download className="w-4 h-4" />
+                                {tt.trimDownload}
+                            </PrimaryButton>
+                        </div>
+
+                        <div className="bg-[var(--color-wine-50)] border border-[var(--color-wine-100)] rounded-2xl p-4 flex items-start gap-3">
+                            <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-[var(--color-wine-700)] text-[var(--color-cream)] text-[11px] font-bold tracking-wider shrink-0">
+                                ?
+                            </span>
+                            <div className="text-[13px] text-[var(--color-smoke-600)]">
+                                <p className="font-semibold text-[var(--color-wine-700)] mb-1">{tt.howTitle}</p>
+                                <p className="leading-relaxed">{tt.howBody}</p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </ToolCard>
+        </ToolShell>
     );
 }
