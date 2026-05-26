@@ -1,8 +1,8 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useRef } from 'react';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { useT } from '@/lib/i18n/LanguageProvider';
 
@@ -25,48 +25,69 @@ const widthMap = {
   xwide: 'max-w-7xl',
 };
 
+const EASE = [0.25, 1, 0.5, 1] as const;
+
 export default function ToolShell({
   icon, title, subtitle, kicker, width = 'wide', children, actions,
 }: ToolShellProps) {
   const t = useT();
+  const heroRef = useRef<HTMLDivElement>(null);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ['start start', 'end start'],
+  });
+  const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '-15%']);
+  const heroOpacity = useTransform(scrollYProgress, [0, 1], [1, 0.4]);
+  const decoY = useTransform(scrollYProgress, [0, 1], ['0%', '60%']);
+  const decoRot = useTransform(scrollYProgress, [0, 1], [0, 22]);
 
   return (
-    <div className="relative pt-6 sm:pt-10 pb-20">
-      <ToolBackdrop />
+    <div className="relative pt-8 sm:pt-12 pb-24 overflow-hidden">
       <div className={`relative ${widthMap[width]} mx-auto px-4 sm:px-6 lg:px-8`}>
-        <div className="mb-6">
+        <div className="mb-8">
           <Link
             href="/"
-            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-[var(--color-smoke-600)] hover:text-[var(--color-wine-700)] transition-colors group"
+            className="group inline-flex items-center gap-1.5 text-[12px] font-medium tracking-[-0.01em] text-[var(--color-ink-3)] hover:text-[var(--color-accent)] transition-colors duration-300"
           >
             <motion.span
-              whileHover={{ x: -3 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 18 }}
+              whileHover={{ x: -2 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 22 }}
               className="inline-flex items-center gap-1.5"
             >
-              <ArrowLeft className="w-3.5 h-3.5" />
+              <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2.2} />
               {t.common.home}
             </motion.span>
           </Link>
         </div>
 
-        <div className="mb-10 sm:mb-12 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-          <div className="flex items-start gap-4 sm:gap-5">
+        <motion.div
+          ref={heroRef}
+          style={{ y: heroY, opacity: heroOpacity }}
+          className="relative mb-12 sm:mb-16 flex flex-col md:flex-row md:items-end md:justify-between gap-8"
+        >
+          {/* parallax decoration behind the title */}
+          <motion.div
+            aria-hidden
+            style={{ y: decoY, rotate: decoRot }}
+            className="pointer-events-none absolute -top-6 -right-2 hidden md:block w-24 h-24 rounded-2xl border border-[var(--color-line-strong)]"
+          />
+
+          <div className="relative flex items-start gap-5">
             <motion.span
-              initial={{ opacity: 0, scale: 0.85, rotate: -8 }}
-              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-              transition={{ type: 'spring', stiffness: 280, damping: 18 }}
-              className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-[var(--color-wine-700)] text-[var(--color-cream)] shadow-soft border-[1.5px] border-[var(--color-wine-800)]"
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="hidden sm:inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--color-ink-2)] text-[var(--color-accent)] flex-shrink-0"
             >
               {icon}
             </motion.span>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               {kicker && (
                 <motion.div
-                  initial={{ opacity: 0, y: -6 }}
+                  initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 }}
-                  className="text-[11px] tracking-[0.22em] uppercase text-[var(--color-wine-600)] font-semibold mb-1.5"
+                  transition={{ duration: 0.4, ease: EASE }}
+                  className="kicker text-[var(--color-ink-3)] mb-3"
                 >
                   {kicker}
                 </motion.div>
@@ -74,54 +95,41 @@ export default function ToolShell({
               <motion.h1
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="text-3xl sm:text-4xl font-semibold tracking-tight text-[var(--color-wine-700)] leading-tight"
+                transition={{ duration: 0.55, ease: EASE }}
+                className="display-2 text-[2rem] sm:text-[2.75rem] text-[var(--color-ink-2)]"
               >
-                <span className="relative inline-block">
-                  <span className="relative z-10">{title}</span>
-                  <motion.span
-                    aria-hidden
-                    className="absolute inset-x-0 bottom-1 h-2.5 sm:h-3 bg-[var(--color-wine-200)]/70 rounded-sm -z-0"
-                    initial={{ scaleX: 0, originX: 0 }}
-                    animate={{ scaleX: 1 }}
-                    transition={{ delay: 0.4, duration: 0.55, ease: [0.33, 0, 0.2, 1] }}
-                  />
-                </span>
+                {title}
               </motion.h1>
               <motion.p
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
-                className="mt-2 text-[15px] text-[var(--color-smoke-600)] max-w-2xl leading-relaxed"
+                transition={{ duration: 0.55, ease: EASE, delay: 0.08 }}
+                className="mt-4 text-[15px] sm:text-[16px] text-[var(--color-ink-3)] max-w-2xl leading-[1.55] tracking-[-0.005em]"
               >
                 {subtitle}
               </motion.p>
             </div>
           </div>
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
-        </div>
+          {actions && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: EASE, delay: 0.15 }}
+              className="relative flex items-center gap-2 flex-shrink-0"
+            >
+              {actions}
+            </motion.div>
+          )}
+        </motion.div>
 
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.5 }}
+          transition={{ delay: 0.18, duration: 0.55, ease: EASE }}
         >
           {children}
         </motion.div>
       </div>
-    </div>
-  );
-}
-
-function ToolBackdrop() {
-  return (
-    <div aria-hidden className="absolute inset-x-0 top-0 h-[420px] overflow-hidden pointer-events-none -z-10">
-      <div className="absolute inset-0 paper-grid opacity-[0.06]" />
-      <motion.div
-        animate={{ rotate: [0, 5, 0], scale: [1, 1.06, 1] }}
-        transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute -top-24 -right-32 w-[380px] h-[380px] rounded-[42%_58%_55%_45%] bg-[var(--color-wine-100)] blur-3xl opacity-60"
-      />
     </div>
   );
 }
@@ -131,7 +139,7 @@ function ToolBackdrop() {
 export function ToolCard({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={`relative bg-white rounded-3xl border-[1.5px] border-[var(--color-wine-100)] shadow-soft p-6 sm:p-8 ${className}`}
+      className={`relative bg-[var(--color-surface)] rounded-2xl border border-[var(--color-line)] p-6 sm:p-8 ${className}`}
     >
       {children}
     </div>
@@ -152,10 +160,10 @@ export function PrimaryButton({
       type={type}
       onClick={onClick}
       disabled={disabled}
-      whileHover={disabled ? undefined : { scale: 1.015, y: -1 }}
+      whileHover={disabled ? undefined : { scale: 1.015 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 18 }}
-      className={`relative inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[var(--color-wine-700)] text-[var(--color-cream)] text-[14px] font-semibold border-[1.5px] border-[var(--color-wine-800)] shadow-soft hover:bg-[var(--color-wine-600)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${className}`}
+      transition={{ type: 'spring', stiffness: 420, damping: 22 }}
+      className={`relative inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] text-[13.5px] font-semibold tracking-[-0.01em] hover:bg-[var(--color-accent-deep)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-300 ${className}`}
     >
       {children}
     </motion.button>
@@ -174,10 +182,10 @@ export function SecondaryButton({
     <motion.button
       onClick={onClick}
       disabled={disabled}
-      whileHover={disabled ? undefined : { y: -1 }}
+      whileHover={disabled ? undefined : { scale: 1.015 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 380, damping: 18 }}
-      className={`relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-white text-[var(--color-wine-700)] text-[13.5px] font-semibold border-[1.5px] border-[var(--color-wine-200)] hover:bg-[var(--color-wine-50)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${className}`}
+      transition={{ type: 'spring', stiffness: 420, damping: 22 }}
+      className={`relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-white text-[var(--color-ink-2)] text-[13px] font-semibold tracking-[-0.01em] border border-[var(--color-line-strong)] hover:border-[var(--color-ink-2)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-300 ${className}`}
     >
       {children}
     </motion.button>
@@ -195,13 +203,13 @@ export function GhostButton({
 }) {
   const toneCls =
     tone === 'danger'
-      ? 'text-[#a4364c] hover:bg-[#fbe3e7]'
-      : 'text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)]';
+      ? 'text-[#d62828] hover:bg-[#fde5e5]'
+      : 'text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]';
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-medium ${toneCls} disabled:opacity-50 transition-colors ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium ${toneCls} disabled:opacity-40 transition-colors duration-200 ${className}`}
     >
       {children}
     </button>
@@ -210,11 +218,11 @@ export function GhostButton({
 
 export function FieldLabel({ children, hint }: { children: ReactNode; hint?: string }) {
   return (
-    <div className="flex items-baseline justify-between mb-1.5">
-      <label className="text-[12.5px] font-semibold tracking-wide text-[var(--color-wine-700)]">
+    <div className="flex items-baseline justify-between mb-2">
+      <label className="text-[12px] font-semibold tracking-[0.04em] uppercase text-[var(--color-ink-2)]">
         {children}
       </label>
-      {hint && <span className="text-[11.5px] text-[var(--color-smoke-600)]">{hint}</span>}
+      {hint && <span className="text-[11.5px] text-[var(--color-ink-3)]">{hint}</span>}
     </div>
   );
 }
@@ -223,7 +231,7 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`w-full h-11 px-4 rounded-2xl bg-white border-[1.5px] border-[var(--color-wine-100)] text-[14px] text-[var(--color-wine-800)] placeholder:text-[var(--color-smoke-600)]/60 focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)] transition-all shadow-[inset_0_1px_2px_rgba(85,40,52,0.04)] ${props.className ?? ''}`}
+      className={`w-full h-11 px-4 rounded-xl bg-white border border-[var(--color-line)] text-[14px] text-[var(--color-ink-2)] placeholder:text-[var(--color-ink-4)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/15 transition-all duration-300 ${props.className ?? ''}`}
     />
   );
 }
@@ -232,7 +240,7 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   return (
     <textarea
       {...props}
-      className={`w-full px-4 py-3 rounded-2xl bg-white border-[1.5px] border-[var(--color-wine-100)] text-[14px] text-[var(--color-wine-800)] placeholder:text-[var(--color-smoke-600)]/60 focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)] transition-all resize-none shadow-[inset_0_1px_2px_rgba(85,40,52,0.04)] ${props.className ?? ''}`}
+      className={`w-full px-4 py-3 rounded-xl bg-white border border-[var(--color-line)] text-[14px] text-[var(--color-ink-2)] placeholder:text-[var(--color-ink-4)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/15 transition-all duration-300 resize-none ${props.className ?? ''}`}
     />
   );
 }
@@ -245,20 +253,20 @@ export function SegmentedControl<T extends string>({
   onChange: (v: T) => void;
 }) {
   return (
-    <div className="inline-flex p-1 rounded-2xl bg-[var(--color-wine-50)] border border-[var(--color-wine-100)]">
+    <div className="inline-flex p-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-line)]">
       {options.map((opt) => {
         const active = opt.value === value;
         return (
           <button
             key={opt.value}
             onClick={() => onChange(opt.value)}
-            className={`relative px-3.5 py-1.5 rounded-xl text-[12.5px] font-semibold transition-colors ${active ? 'text-[var(--color-cream)]' : 'text-[var(--color-wine-700)] hover:text-[var(--color-wine-600)]'}`}
+            className={`relative px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold tracking-[-0.01em] transition-colors duration-300 ${active ? 'text-white' : 'text-[var(--color-ink)] hover:text-[var(--color-ink-2)]'}`}
           >
             {active && (
               <motion.span
                 layoutId={`seg-${opt.label}-${options.length}`}
-                className="absolute inset-0 rounded-xl bg-[var(--color-wine-700)] -z-0"
-                transition={{ type: 'spring', stiffness: 380, damping: 28 }}
+                className="absolute inset-0 rounded-full bg-[var(--color-ink-2)] -z-0"
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
               />
             )}
             <span className="relative z-10">{opt.label}</span>

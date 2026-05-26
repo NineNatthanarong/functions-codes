@@ -14,8 +14,8 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f7f4f4' },
-    { media: '(prefers-color-scheme: dark)', color: '#552834' },
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#14213d' },
   ],
 };
 
@@ -131,11 +131,11 @@ export default function RootLayout({
       </head>
       <body
         suppressHydrationWarning
-        className="antialiased min-h-screen flex flex-col bg-[var(--color-smoke-100)] text-[var(--color-ink)] thai-tight"
+        className="antialiased min-h-screen flex flex-col bg-[var(--color-base)] text-[var(--color-ink)] thai-tight"
       >
         <LanguageProvider>
           <Navbar />
-          <main className="flex-grow pt-20">
+          <main className="flex-grow pt-16">
             {children}
           </main>
           <Footer />
@@ -144,10 +144,11 @@ export default function RootLayout({
             position="top-center"
             toastOptions={{
               style: {
-                fontFamily: "'IBM Plex Sans Thai', 'IBM Plex Sans', system-ui, sans-serif",
-                background: '#552834',
-                color: '#faf6f3',
-                border: '1.5px solid #3f1d27',
+                fontFamily: "'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif",
+                background: '#14213d',
+                color: '#ffffff',
+                border: '1px solid #000000',
+                borderRadius: '14px',
               },
             }}
           />
