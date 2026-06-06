@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { motion, useScroll, useTransform, MotionValue } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from 'framer-motion';
 import {
   Search, FileText, Image as ImageIcon, Scissors, QrCode, Lock, Palette, Braces,
   Type, ArrowRightLeft, Minimize2, ArrowUpRight, Mic, Edit, ShieldCheck, WifiOff,
@@ -167,21 +167,21 @@ export default function Home() {
       {/* ──────── HERO with parallax ──────── */}
       <section
         ref={heroRef}
-        className="relative pt-20 sm:pt-32 pb-20 sm:pb-32 overflow-hidden parallax-stage"
+        className="relative h-[calc(100vh-4rem)] min-h-[640px] flex items-center justify-center overflow-hidden parallax-stage"
       >
         <ParallaxAmbient bgY={heroBgY} midY={heroMidY} />
 
         <motion.div
           style={{ y: heroFgY, opacity: heroOpacity, scale: heroScale }}
-          className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
+          className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
         >
           <motion.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, ease: EASE }}
-            className="flex justify-center mb-10"
+            className="flex justify-center mb-3"
           >
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] text-[11.5px] font-medium tracking-[0.04em] text-[var(--color-ink)]">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] text-[11.5px] font-medium tracking-[0.04em] text-[var(--color-ink)]">
               <span className="relative flex w-1.5 h-1.5">
                 <span className="absolute inset-0 rounded-full bg-[var(--color-accent)] animate-ping opacity-60" />
                 <span className="relative w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />
@@ -190,8 +190,13 @@ export default function Home() {
             </span>
           </motion.div>
 
-          <div className="text-center max-w-5xl mx-auto">
-            <h1 className="display-1 text-[2.75rem] sm:text-[4.5rem] lg:text-[6rem] text-[var(--color-ink)]">
+          <div className="text-center max-w-4xl mx-auto">
+            <h1 className={cn(
+              'display-1 text-[var(--color-ink)]',
+              locale === 'th'
+                ? 'text-[2.75rem] sm:text-[3.75rem] lg:text-[5rem] leading-[1.15]'
+                : 'text-[3.75rem] sm:text-[5.25rem] lg:text-[7rem] leading-[1.0]'
+            )}>
               <AnimatedHeadline locale={locale} t={t.home} />
             </h1>
 
@@ -199,7 +204,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.55, duration: 0.6, ease: EASE }}
-              className="mt-8 text-[16px] sm:text-[18px] text-[var(--color-ink-3)] max-w-xl mx-auto leading-[1.5] tracking-[-0.005em]"
+              className="mt-5 text-[17px] sm:text-[19px] text-[var(--color-ink-3)] max-w-2xl mx-auto leading-[1.55] tracking-[-0.005em]"
             >
               {t.home.lead}
             </motion.p>
@@ -217,7 +222,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.05, duration: 0.6 }}
-              className="mt-10 flex flex-wrap items-center justify-center gap-x-7 gap-y-3"
+              className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2"
             >
               <PrincipleChip icon={<ShieldCheck className="w-3.5 h-3.5" strokeWidth={2.2} />} label={t.home.badge1} />
               <PrincipleChip icon={<WifiOff className="w-3.5 h-3.5" strokeWidth={2.2} />} label={t.home.badge2} />
@@ -375,7 +380,7 @@ function AnimatedHeadline({ locale, t }: { locale: 'th' | 'en'; t: { heading1: s
       {lines.map((line, i) => (
         <motion.span
           key={`${locale}-${i}`}
-          initial={{ opacity: 0, y: 32 }}
+          initial={{ opacity: 0, y: 28 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.08 + i * 0.1, duration: 0.7, ease: EASE }}
           className={cn(
@@ -390,7 +395,7 @@ function AnimatedHeadline({ locale, t }: { locale: 'th' | 'en'; t: { heading1: s
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.7, duration: 0.6 }}
-        className="block mt-8 text-[15px] sm:text-[17px] font-medium text-[var(--color-ink-3)] tracking-[-0.005em]"
+        className="block mt-4 text-[15px] sm:text-[17px] font-medium text-[var(--color-ink-3)] tracking-[-0.005em]"
         style={{ letterSpacing: '0' }}
       >
         — {t.tagline}
@@ -405,6 +410,155 @@ function PrincipleChip({ icon, label }: { icon: React.ReactNode; label: string }
       <span className="text-[var(--color-ink)]">{icon}</span>
       {label}
     </span>
+  );
+}
+
+function HeroSearch({
+  value, onChange, placeholder, resultCount, locale, t,
+}: {
+  value: string;
+  onChange: (s: string) => void;
+  placeholder: string;
+  resultCount: number;
+  locale: 'th' | 'en';
+  t: ReturnType<typeof useLanguage>['t'];
+}) {
+  const [focused, setFocused] = useState(false);
+
+  const quick: { label: string; query: string }[] = [
+    { label: t.tools['file-converter'].title, query: locale === 'th' ? 'แปลงไฟล์' : 'convert' },
+    { label: t.tools['bgrm'].title, query: locale === 'th' ? 'ลบพื้นหลัง' : 'background' },
+    { label: t.tools['qr-generator'].title, query: 'qr' },
+    { label: t.tools['pdf-tools'].title, query: 'pdf' },
+    { label: t.tools['password-generator'].title, query: locale === 'th' ? 'รหัสผ่าน' : 'password' },
+  ];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: 0.7, duration: 0.65, ease: EASE }}
+      className="relative mt-5 sm:mt-6 max-w-2xl mx-auto"
+    >
+      {/* glow halo when focused */}
+      <motion.div
+        aria-hidden
+        animate={{
+          opacity: focused ? 0.7 : 0.35,
+          scale: focused ? 1.04 : 1,
+        }}
+        transition={{ duration: 0.5, ease: EASE }}
+        className="absolute -inset-4 -z-10 rounded-full bg-[var(--color-accent-soft)] blur-2xl"
+      />
+      <motion.div
+        aria-hidden
+        animate={{
+          opacity: focused ? 1 : 0,
+        }}
+        transition={{ duration: 0.4 }}
+        className="absolute -inset-1 -z-10 rounded-full bg-gradient-to-r from-[var(--color-accent)] via-[var(--color-accent)] to-[var(--color-accent-deep)] blur-md"
+      />
+
+      <div
+        className={cn(
+          'relative flex items-center bg-white rounded-full border transition-all duration-300',
+          focused
+            ? 'border-[var(--color-ink-2)] shadow-deep'
+            : 'border-[var(--color-line-strong)] shadow-lift'
+        )}
+      >
+        <div className="absolute inset-y-0 left-0 pl-5 sm:pl-6 flex items-center pointer-events-none text-[var(--color-ink-2)]">
+          <Search className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.2} />
+        </div>
+        <input
+          type="search"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          autoFocus
+          value={value}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onChange('');
+            if (e.key === 'Enter' && value) {
+              const target = document.getElementById('tools');
+              target?.scrollIntoView({ behavior: 'smooth' });
+            }
+          }}
+          placeholder={placeholder}
+          className="w-full h-14 sm:h-16 pl-14 sm:pl-16 pr-4 rounded-full bg-transparent text-[15px] sm:text-[16px] text-[var(--color-ink-2)] placeholder:text-[var(--color-ink-3)] focus:outline-none focus-visible:outline-none tracking-[-0.005em]"
+          style={{ outline: 'none' }}
+        />
+
+        {/* result count + clear */}
+        <div className="flex items-center gap-1 pr-2.5">
+          <AnimatePresence mode="popLayout">
+            {value && (
+              <motion.span
+                key="count"
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.25, ease: EASE }}
+                className="hidden sm:inline-flex items-center gap-1.5 mr-1 px-3 py-1.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-ink-2)] text-[12px] font-mono font-medium tracking-[0.04em]"
+              >
+                <span className="font-semibold tabular-nums">{resultCount}</span>
+                <span className="text-[var(--color-ink-3)]">
+                  {locale === 'th' ? 'ผลลัพธ์' : resultCount === 1 ? 'result' : 'results'}
+                </span>
+              </motion.span>
+            )}
+          </AnimatePresence>
+
+          {value ? (
+            <motion.button
+              key="clear"
+              type="button"
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              onClick={() => onChange('')}
+              aria-label="Clear search"
+              className="inline-flex items-center justify-center w-11 h-11 rounded-full text-[var(--color-ink-3)] hover:text-[var(--color-ink-2)] hover:bg-[var(--color-surface-2)] transition-colors"
+            >
+              <X className="w-4 h-4" strokeWidth={2.2} />
+            </motion.button>
+          ) : (
+            <Link
+              href="#tools"
+              aria-label="Browse tools"
+              className="inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 mr-1 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] hover:bg-[var(--color-accent-deep)] transition-colors duration-300"
+            >
+              <ArrowUpRight className="w-4 h-4" strokeWidth={2.4} />
+            </Link>
+          )}
+        </div>
+      </div>
+
+      {/* quick-pick chips */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.85, duration: 0.5, ease: EASE }}
+        className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5"
+      >
+        <span className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--color-ink-3)] mr-1">
+          {locale === 'th' ? 'ลอง' : 'Try'}
+        </span>
+        {quick.map((q) => (
+          <button
+            key={q.query}
+            onClick={() => onChange(q.query)}
+            className="px-3 py-1.5 rounded-full bg-white border border-[var(--color-line)] text-[12.5px] font-medium text-[var(--color-ink)] hover:border-[var(--color-ink-2)] hover:text-[var(--color-ink-2)] transition-all duration-300"
+          >
+            {q.label}
+          </button>
+        ))}
+      </motion.div>
+    </motion.div>
   );
 }
 
