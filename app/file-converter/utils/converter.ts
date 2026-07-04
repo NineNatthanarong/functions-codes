@@ -29,7 +29,9 @@ export const convertPdfToImages = async (
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
 
-        if (!context) continue;
+        if (!context) {
+            throw new Error(`Failed to get canvas context for page ${i}`);
+        }
 
         canvas.height = viewport.height;
         canvas.width = viewport.width;
@@ -38,20 +40,25 @@ export const convertPdfToImages = async (
             canvasContext: context,
             viewport: viewport,
         };
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await page.render(renderContext as any).promise;
 
         const blob = await new Promise<Blob | null>((resolve) => {
             canvas.toBlob(resolve, format, 0.95);
         });
 
-        if (blob) {
-            results.push({
-                name: `${file.name.replace(/\.pdf$/i, '')}_page_${i}.${format.split('/')[1]}`,
-                blob,
-                type: format,
-            });
+        if (!blob) {
+            throw new Error(`Failed to render page ${i} of ${pageCount}`);
         }
+
+        results.push({
+            name: `${file.name.replace(/\.pdf$/i, '')}_page_${i}.${format.split('/')[1]}`,
+            blob,
+            type: format,
+        });
+    }
+
+    if (results.length === 0) {
+        throw new Error('No pages could be converted');
     }
 
     return results;
@@ -87,7 +94,9 @@ export const convertImageToImage = async (
 ): Promise<ConvertedFile> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
+        const url = URL.createObjectURL(file);
         img.onload = () => {
+            URL.revokeObjectURL(url);
             const canvas = document.createElement('canvas');
             canvas.width = img.width;
             canvas.height = img.height;
@@ -96,11 +105,18 @@ export const convertImageToImage = async (
                 reject(new Error('Failed to get canvas context'));
                 return;
             }
+            if (format === 'image/jpeg') {
+                // JPEG has no alpha channel; without this, transparent pixels turn black.
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
             ctx.drawImage(img, 0, 0);
+            const dotIndex = file.name.lastIndexOf('.');
+            const baseName = dotIndex === -1 ? file.name : file.name.substring(0, dotIndex);
             canvas.toBlob((blob) => {
                 if (blob) {
                     resolve({
-                        name: `${file.name.substring(0, file.name.lastIndexOf('.'))}.${format.split('/')[1]}`,
+                        name: `${baseName}.${format.split('/')[1]}`,
                         blob,
                         type: format,
                     });
@@ -109,7 +125,10 @@ export const convertImageToImage = async (
                 }
             }, format, 0.9);
         };
-        img.onerror = reject;
-        img.src = URL.createObjectURL(file);
+        img.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+        img.src = url;
     });
 };

@@ -1,13 +1,36 @@
 import type { Metadata } from "next";
+import { Inter, IBM_Plex_Sans_Thai, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import CommandPalette from "@/components/CommandPalette";
+import MotionProvider from "@/components/MotionProvider";
 import { Toaster } from 'sonner';
 import { generateWebSiteSchema, generateWebApplicationSchema, generateOrganizationSchema } from "@/lib/structured-data";
 import { LanguageProvider } from "@/lib/i18n/LanguageProvider";
 
 const SITE_URL = 'https://functions.codes';
 const SITE_NAME = 'functions.codes';
+
+// Self-hosted at build time — no runtime requests to Google
+const inter = Inter({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700', '800', '900'],
+  variable: '--font-inter',
+  display: 'swap',
+});
+const plexThai = IBM_Plex_Sans_Thai({
+  subsets: ['thai', 'latin'],
+  weight: ['200', '300', '400', '500', '600', '700'],
+  variable: '--font-plex-thai',
+  display: 'swap',
+});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  variable: '--font-jetbrains',
+  display: 'swap',
+});
 
 export const viewport = {
   width: 'device-width',
@@ -66,10 +89,6 @@ export const metadata: Metadata = {
   },
   alternates: {
     canonical: SITE_URL,
-    languages: {
-      'th-TH': SITE_URL,
-      'en-US': SITE_URL,
-    },
   },
   openGraph: {
     type: 'website',
@@ -112,7 +131,7 @@ export default function RootLayout({
   const orgSchema = generateOrganizationSchema();
 
   return (
-    <html lang="th" suppressHydrationWarning>
+    <html lang="th" suppressHydrationWarning className={`${inter.variable} ${plexThai.variable} ${jetbrainsMono.variable}`}>
       <head>
         <script
           type="application/ld+json"
@@ -126,15 +145,15 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(orgSchema) }}
         />
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body
         suppressHydrationWarning
         className="antialiased min-h-screen flex flex-col bg-[var(--color-base)] text-[var(--color-ink)] thai-tight"
       >
         <LanguageProvider>
+          <MotionProvider>
           <Navbar />
+          <CommandPalette />
           <main className="flex-grow pt-16">
             {children}
           </main>
@@ -144,7 +163,7 @@ export default function RootLayout({
             position="top-center"
             toastOptions={{
               style: {
-                fontFamily: "'Inter', 'IBM Plex Sans Thai', system-ui, sans-serif",
+                fontFamily: 'var(--font-sans)',
                 background: '#14213d',
                 color: '#ffffff',
                 border: '1px solid #000000',
@@ -152,6 +171,7 @@ export default function RootLayout({
               },
             }}
           />
+          </MotionProvider>
         </LanguageProvider>
       </body>
     </html>

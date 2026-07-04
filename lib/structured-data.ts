@@ -1,3 +1,6 @@
+import { TOOL_KEYS } from '@/lib/tools';
+import { translations } from '@/lib/i18n/translations';
+
 const SITE_URL = 'https://functions.codes';
 const SITE_NAME = 'functions.codes';
 
@@ -108,21 +111,9 @@ export function generateWebApplicationSchema(): WebApplicationSchema {
             price: '0',
             priceCurrency: 'USD',
         },
-        featureList: [
-            'File Converter',
-            'Background Remover',
-            'Image Compressor',
-            'QR Code Generator',
-            'JSON Formatter',
-            'Password Generator',
-            'Color Palette Extractor',
-            'Lorem Ipsum Generator',
-            'Text Diff Viewer',
-            'Unit Converter',
-            'PDF Tools',
-            'Audio Editor',
-            'Markdown Editor',
-        ],
+        featureList: TOOL_KEYS.map(
+            (slug) => (translations.en.tools as Record<string, { title: string }>)[slug]?.title ?? slug
+        ),
     };
 }
 

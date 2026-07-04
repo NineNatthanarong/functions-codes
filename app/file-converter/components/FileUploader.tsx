@@ -3,8 +3,9 @@
 import { useState, useCallback } from 'react';
 import { Upload, FileType } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 
 interface FileUploaderProps {
     onFilesSelected: (files: File[]) => void;
@@ -14,6 +15,10 @@ interface FileUploaderProps {
 export default function FileUploader({ onFilesSelected, accept }: FileUploaderProps) {
     const t = useT();
     const tt = t.pages.converter;
+    const { locale } = useLanguage();
+    const s = locale === 'th'
+        ? { unsupported: 'ไฟล์ประเภทนี้ไม่รองรับ' }
+        : { unsupported: 'Unsupported file type' };
     const [isDragging, setIsDragging] = useState(false);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -23,29 +28,53 @@ export default function FileUploader({ onFilesSelected, accept }: FileUploaderPr
 
     const handleDragLeave = useCallback((e: React.DragEvent) => {
         e.preventDefault();
+        // Ignore dragleave fired when moving over the dropzone's own children.
+        if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget as Node)) return;
         setIsDragging(false);
     }, []);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            onFilesSelected(Array.from(e.dataTransfer.files));
+        if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+        const dropped = Array.from(e.dataTransfer.files);
+        const acceptedExts = accept
+            ?.split(',')
+            .map((ext) => ext.trim().toLowerCase())
+            .filter(Boolean);
+        const isAccepted = (file: File) =>
+            !acceptedExts || acceptedExts.some((ext) => file.name.toLowerCase().endsWith(ext));
+        const rejected = dropped.filter((f) => !isAccepted(f));
+        if (rejected.length > 0) {
+            toast.error(`${s.unsupported}: ${rejected.map((f) => f.name).join(', ')}`);
         }
-    }, [onFilesSelected]);
+        const okFiles = dropped.filter(isAccepted);
+        if (okFiles.length > 0) {
+            onFilesSelected(okFiles);
+        }
+    }, [onFilesSelected, accept, s.unsupported]);
 
     const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
             onFilesSelected(Array.from(e.target.files));
         }
+        // Allow re-selecting the same file(s) later.
+        e.target.value = '';
     }, [onFilesSelected]);
+
+    const openFilePicker = useCallback(() => {
+        document.getElementById('file-input')?.click();
+    }, []);
 
     return (
         <motion.div
             whileHover={{ scale: 1.005 }}
             whileTap={{ scale: 0.995 }}
+            role="button"
+            tabIndex={0}
+            aria-label={tt.uploadTitle}
             className={cn(
-                'relative group cursor-pointer rounded-3xl border-2 border-dashed p-12 text-center transition-all duration-300 bg-white',
+                'relative group cursor-pointer rounded-3xl border-2 border-dashed p-12 text-center transition-all duration-300 bg-white focus-visible:ring-2 focus-visible:ring-[var(--color-wine-600)] outline-none',
                 isDragging
                     ? 'border-[var(--color-wine-600)] bg-[var(--color-wine-50)]'
                     : 'border-[var(--color-wine-200)] hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50'
@@ -53,7 +82,13 @@ export default function FileUploader({ onFilesSelected, accept }: FileUploaderPr
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            onClick={() => document.getElementById('file-input')?.click()}
+            onClick={openFilePicker}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    openFilePicker();
+                }
+            }}
         >
             <input
                 type="file"

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import FileUploader from './components/FileUploader';
 import { FileText } from 'lucide-react';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { toast } from 'sonner';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell from '@/components/ToolShell';
 
 const ConversionList = dynamic(() => import('./components/ConversionList'), {
@@ -19,6 +20,7 @@ const ConversionList = dynamic(() => import('./components/ConversionList'), {
 export default function FileConverterPage() {
     const t = useT();
     const tt = t.pages.converter;
+    const { locale } = useLanguage();
     const [files, setFiles] = useState<File[]>([]);
 
     const handleFilesSelected = (newFiles: File[]) => {
@@ -26,6 +28,20 @@ export default function FileConverterPage() {
     };
 
     const handleReset = () => setFiles([]);
+
+    useEffect(() => {
+        const handlePaste = (e: ClipboardEvent) => {
+            const pasted = Array.from(e.clipboardData?.files ?? []).filter(
+                (f) => f.type.startsWith('image/') || f.type === 'application/pdf'
+            );
+            if (pasted.length === 0) return;
+            e.preventDefault();
+            setFiles((prev) => [...prev, ...pasted]);
+            toast.success(locale === 'th' ? 'เพิ่มไฟล์จากคลิปบอร์ดแล้ว' : 'Added from clipboard');
+        };
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+    }, [locale]);
 
     return (
         <ToolShell

@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { Pipette, Upload, Copy, Trash2, Image as ImageIcon } from 'lucide-react';
+import { ArrowRight, Pipette, Upload, Copy, Trash2, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, PrimaryButton, GhostButton } from '@/components/ToolShell';
 
 declare global {
@@ -25,34 +26,96 @@ function isLight(hex: string) {
     return (rgb.r * 299 + rgb.g * 587 + rgb.b * 114) / 1000 > 160;
 }
 
+function rgbToHsl(r: number, g: number, b: number) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0;
+    let s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            default: h = (r - g) / d + 4;
+        }
+        h /= 6;
+    }
+    return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+}
+
 export default function ColorPickerPage() {
-    const t = useT();
+    const { locale, t } = useLanguage();
     const tt = t.pages.colorPicker;
+    const s = locale === 'th'
+        ? {
+            emptyHint: 'เลือกสีจากหน้าจอ หรืออัปโหลดรูปแล้วคลิกที่รูปเพื่อเลือกสี',
+            pasteHint: 'หรือกด Ctrl+V เพื่อวางรูปจากคลิปบอร์ด',
+            notImage: 'ไฟล์นี้ไม่ใช่รูปภาพ',
+            loadFailed: 'โหลดรูปไม่สำเร็จ ไฟล์อาจเสียหาย',
+            copyFailed: 'คัดลอกไม่สำเร็จ',
+            openConverter: 'แปลงสีเพิ่มเติม (HSL / OKLCH / Gradient)',
+        }
+        : {
+            emptyHint: 'Pick a color from your screen, or upload an image and click a pixel.',
+            pasteHint: 'You can also press Ctrl+V to paste an image from the clipboard',
+            notImage: 'That file is not an image',
+            loadFailed: 'Could not load that image — the file may be corrupted',
+            copyFailed: 'Could not copy to clipboard',
+            openConverter: 'More conversions (HSL / OKLCH / Gradient)',
+        };
     const [color, setColor] = useState<string | null>(null);
     const [history, setHistory] = useState<string[]>([]);
     const [imgUrl, setImgUrl] = useState<string | null>(null);
+    const [dragging, setDragging] = useState(false);
+    const [supported, setSupported] = useState<boolean | null>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    const supported = typeof window !== 'undefined' && 'EyeDropper' in window;
+    useEffect(() => {
+        setSupported('EyeDropper' in window);
+    }, []);
+
+    // Revoke the object URL when it is replaced or on unmount
+    useEffect(() => {
+        if (!imgUrl) return;
+        return () => URL.revokeObjectURL(imgUrl);
+    }, [imgUrl]);
+
+    const copy = async (val: string) => {
+        try {
+            await navigator.clipboard.writeText(val);
+            toast.success(`${tt.copied}: ${val}`);
+        } catch {
+            toast.error(s.copyFailed);
+        }
+    };
+
+    const pick = (hex: string) => {
+        setColor(hex);
+        setHistory((h) => [hex, ...h.filter((x) => x !== hex)].slice(0, 16));
+        void copy(hex);
+    };
 
     const screenPick = async () => {
-        if (!supported || !window.EyeDropper) return;
+        if (!window.EyeDropper) return;
         try {
             const ed = new window.EyeDropper();
             const result = await ed.open();
-            const c = result.sRGBHex.toUpperCase();
-            setColor(c);
-            setHistory((h) => [c, ...h.filter((x) => x !== c)].slice(0, 16));
+            pick(result.sRGBHex.toUpperCase());
         } catch {
             // user cancelled
         }
     };
 
-    const onUpload = async (file: File) => {
-        if (!file.type.startsWith('image/')) return;
+    const onUpload = (file: File) => {
+        if (!file.type.startsWith('image/')) {
+            toast.error(s.notImage);
+            return;
+        }
         const url = URL.createObjectURL(file);
-        if (imgUrl) URL.revokeObjectURL(imgUrl);
         setImgUrl(url);
 
         const img = new Image();
@@ -63,33 +126,50 @@ export default function ColorPickerPage() {
             const ratio = img.width > maxW ? maxW / img.width : 1;
             canvas.width = img.width * ratio;
             canvas.height = img.height * ratio;
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
             if (!ctx) return;
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         };
+        img.onerror = () => {
+            toast.error(s.loadFailed);
+            setImgUrl((prev) => (prev === url ? null : prev));
+        };
         img.src = url;
     };
+
+    // Paste an image straight from the clipboard
+    const onUploadRef = useRef(onUpload);
+    useEffect(() => {
+        onUploadRef.current = onUpload;
+    });
+    useEffect(() => {
+        const onPaste = (e: ClipboardEvent) => {
+            const item = Array.from(e.clipboardData?.items ?? []).find((it) => it.type.startsWith('image/'));
+            const file = item?.getAsFile();
+            if (file) {
+                e.preventDefault();
+                onUploadRef.current(file);
+            }
+        };
+        window.addEventListener('paste', onPaste);
+        return () => window.removeEventListener('paste', onPaste);
+    }, []);
 
     const onCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const x = ((e.clientX - rect.left) * canvas.width) / rect.width;
-        const y = ((e.clientY - rect.top) * canvas.height) / rect.height;
-        const ctx = canvas.getContext('2d');
+        const x = Math.min(Math.max(0, Math.floor(((e.clientX - rect.left) * canvas.width) / rect.width)), canvas.width - 1);
+        const y = Math.min(Math.max(0, Math.floor(((e.clientY - rect.top) * canvas.height) / rect.height)), canvas.height - 1);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         if (!ctx) return;
         const data = ctx.getImageData(x, y, 1, 1).data;
         const hex = '#' + [data[0], data[1], data[2]].map((v) => v.toString(16).padStart(2, '0')).join('').toUpperCase();
-        setColor(hex);
-        setHistory((h) => [hex, ...h.filter((x) => x !== hex)].slice(0, 16));
-    };
-
-    const copy = (val: string) => {
-        navigator.clipboard.writeText(val);
-        toast.success(`${tt.copied}: ${val}`);
+        pick(hex);
     };
 
     const rgb = color ? hexToRgb(color) : null;
+    const hsl = rgb ? rgbToHsl(rgb.r, rgb.g, rgb.b) : null;
 
     return (
         <ToolShell
@@ -102,11 +182,13 @@ export default function ColorPickerPage() {
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-6">
                 <ToolCard>
                     <div className="space-y-5">
-                        <PrimaryButton onClick={screenPick} disabled={!supported} className="w-full py-4">
-                            <Pipette className="w-4 h-4" />
-                            {tt.screenPick}
-                        </PrimaryButton>
-                        {!supported && (
+                        {supported !== false && (
+                            <PrimaryButton onClick={screenPick} disabled={!supported} className="w-full py-4">
+                                <Pipette className="w-4 h-4" />
+                                {tt.screenPick}
+                            </PrimaryButton>
+                        )}
+                        {supported === false && (
                             <p className="text-[12.5px] text-[#a4364c] bg-[#fbe3e7] border border-[#f0c8d0] rounded-2xl p-3 text-center">
                                 {tt.notSupported}
                             </p>
@@ -126,16 +208,29 @@ export default function ColorPickerPage() {
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
-                                onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+                                onChange={(e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) onUpload(file);
+                                    e.target.value = '';
+                                }}
                             />
                             <button
                                 onClick={() => fileRef.current?.click()}
-                                className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl bg-[var(--color-wine-50)] border-[1.5px] border-dashed border-[var(--color-wine-200)] text-[13.5px] font-semibold text-[var(--color-wine-700)] hover:bg-[var(--color-wine-100)] transition-colors"
+                                onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+                                onDragLeave={() => setDragging(false)}
+                                onDrop={(e) => {
+                                    e.preventDefault();
+                                    setDragging(false);
+                                    const file = e.dataTransfer.files?.[0];
+                                    if (file) onUpload(file);
+                                }}
+                                className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-2xl border-[1.5px] border-dashed text-[13.5px] font-semibold text-[var(--color-wine-700)] hover:bg-[var(--color-wine-100)] transition-colors ${dragging ? 'bg-[var(--color-wine-100)] border-[var(--color-wine-400)]' : 'bg-[var(--color-wine-50)] border-[var(--color-wine-200)]'}`}
                             >
                                 <Upload className="w-4 h-4" />
                                 {t.common.upload}
                             </button>
                             <p className="text-[12px] text-[var(--color-smoke-600)] mt-2 text-center">{tt.uploadHint}</p>
+                            <p className="text-[12px] text-[var(--color-smoke-600)] mt-1 text-center">{s.pasteHint}</p>
                         </div>
 
                         {history.length > 0 && (
@@ -154,10 +249,11 @@ export default function ColorPickerPage() {
                                         <motion.button
                                             key={`${h}-${i}`}
                                             whileHover={{ scale: 1.1, y: -2 }}
-                                            onClick={() => { setColor(h); copy(h); }}
+                                            onClick={() => { setColor(h); void copy(h); }}
                                             className="aspect-square rounded-lg border border-[var(--color-wine-100)] cursor-pointer"
                                             style={{ background: h }}
                                             title={h}
+                                            aria-label={h}
                                         />
                                     ))}
                                 </div>
@@ -175,15 +271,32 @@ export default function ColorPickerPage() {
                             >
                                 <span className="text-3xl sm:text-4xl font-mono font-bold tracking-tight">{color}</span>
                             </div>
-                            <div className="p-5 grid grid-cols-2 gap-3">
-                                <ValueChip label="HEX" value={color} onCopy={copy} />
-                                {rgb && <ValueChip label="RGB" value={`rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`} onCopy={copy} />}
+                            <div className="p-5 space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <ValueChip label="HEX" value={color} onCopy={copy} />
+                                    {rgb && <ValueChip label="RGB" value={`rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`} onCopy={copy} />}
+                                    {hsl && (
+                                        <ValueChip
+                                            label="HSL"
+                                            value={`hsl(${hsl.h}, ${hsl.s}%, ${hsl.l}%)`}
+                                            onCopy={copy}
+                                            className="col-span-2"
+                                        />
+                                    )}
+                                </div>
+                                <Link
+                                    href="/color-tools"
+                                    className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[var(--color-wine-700)] hover:underline"
+                                >
+                                    {s.openConverter}
+                                    <ArrowRight className="w-3.5 h-3.5" />
+                                </Link>
                             </div>
                         </ToolCard>
                     ) : (
                         <ToolCard className="text-center py-12 text-[var(--color-smoke-600)]">
                             <Pipette className="w-10 h-10 mx-auto mb-3 text-[var(--color-wine-300)]" />
-                            <p className="text-sm">—</p>
+                            <p className="text-sm max-w-xs mx-auto">{s.emptyHint}</p>
                         </ToolCard>
                     )}
 
@@ -193,11 +306,13 @@ export default function ColorPickerPage() {
                                 <ImageIcon className="w-3.5 h-3.5 text-[var(--color-wine-700)]" />
                                 <span className="text-[12.5px] font-semibold text-[var(--color-wine-700)]">{tt.uploadHint}</span>
                             </div>
-                            <canvas
-                                ref={canvasRef}
-                                onClick={onCanvasClick}
-                                className="w-full h-auto cursor-crosshair max-h-[480px] object-contain bg-[var(--color-wine-50)]"
-                            />
+                            <div className="max-h-[480px] overflow-auto">
+                                <canvas
+                                    ref={canvasRef}
+                                    onClick={onCanvasClick}
+                                    className="w-full h-auto cursor-crosshair bg-[var(--color-wine-50)]"
+                                />
+                            </div>
                         </ToolCard>
                     )}
                 </div>
@@ -206,11 +321,11 @@ export default function ColorPickerPage() {
     );
 }
 
-function ValueChip({ label, value, onCopy }: { label: string; value: string; onCopy: (v: string) => void }) {
+function ValueChip({ label, value, onCopy, className = '' }: { label: string; value: string; onCopy: (v: string) => void; className?: string }) {
     return (
         <button
             onClick={() => onCopy(value)}
-            className="group flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-[var(--color-wine-50)] border border-[var(--color-wine-100)] text-left hover:bg-[var(--color-wine-100)] transition-colors"
+            className={`group flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-[var(--color-wine-50)] border border-[var(--color-wine-100)] text-left hover:bg-[var(--color-wine-100)] transition-colors ${className}`}
         >
             <div className="min-w-0">
                 <div className="text-[10px] tracking-[0.22em] uppercase text-[var(--color-smoke-600)] font-semibold">{label}</div>

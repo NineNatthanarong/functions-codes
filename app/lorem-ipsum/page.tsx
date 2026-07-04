@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Copy, RefreshCw, Type } from 'lucide-react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, FieldLabel, TextInput, SegmentedControl, PrimaryButton } from '@/components/ToolShell';
 
 const LOREM_TEXT = `Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
@@ -15,42 +15,112 @@ Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, ad
 
 type GenerateType = 'paragraphs' | 'sentences' | 'words';
 
-export default function LoremIpsumGenerator() {
-    const t = useT();
-    const tt = t.pages.lorem;
-    const [count, setCount] = useState(3);
-    const [type, setType] = useState<GenerateType>('paragraphs');
-    const [generatedText, setGeneratedText] = useState('');
+const PARAGRAPHS = LOREM_TEXT.split('\n\n');
+const SENTENCES = (LOREM_TEXT.replace(/\n/g, ' ').match(/[^.!?]+[.!?]+/g) || []).map((s) => s.trim());
+const WORDS = LOREM_TEXT.replace(/\n/g, ' ').replace(/[.,!?]/g, '').split(/\s+/).filter(Boolean);
 
-    const generateLorem = () => {
-        let result = '';
-        const sourceText = LOREM_TEXT.replace(/\n/g, ' ').trim();
+// Deterministic PRNG so output is a pure function of (count, type, seed).
+// Seed 0 keeps the canonical "Lorem ipsum dolor sit amet..." order, which
+// makes the initial render hydration-safe; Generate picks a fresh seed.
+function mulberry32(seed: number) {
+    let a = seed;
+    return () => {
+        a |= 0;
+        a = (a + 0x6d2b79f5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
 
-        if (type === 'paragraphs') {
-            const paragraphs = LOREM_TEXT.split('\n\n');
-            const out: string[] = [];
-            for (let i = 0; i < count; i++) out.push(paragraphs[i % paragraphs.length]);
-            result = out.join('\n\n');
-        } else if (type === 'sentences') {
-            const sentences = sourceText.match(/[^.!?]+[.!?]+/g) || [];
-            const out: string[] = [];
-            for (let i = 0; i < count; i++) out.push(sentences[i % sentences.length].trim());
-            result = out.join(' ');
-        } else {
-            const words = sourceText.replace(/[.,!?]/g, '').split(' ');
-            const out: string[] = [];
-            for (let i = 0; i < count; i++) out.push(words[i % words.length]);
-            result = out.join(' ');
+function shuffle<T>(items: T[], rand: () => number): T[] {
+    const out = [...items];
+    for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+    }
+    return out;
+}
+
+function buildLorem(count: number, type: GenerateType, seed: number): string {
+    if (seed === 0) {
+        const pool = type === 'paragraphs' ? PARAGRAPHS : type === 'sentences' ? SENTENCES : WORDS;
+        const out: string[] = [];
+        for (let i = 0; i < count; i++) out.push(pool[i % pool.length]);
+        return out.join(type === 'paragraphs' ? '\n\n' : ' ');
+    }
+
+    const rand = mulberry32(seed);
+
+    if (type === 'words') {
+        let pool = shuffle(WORDS, rand);
+        const out: string[] = [];
+        for (let i = 0; i < count; i++) {
+            if (i > 0 && i % pool.length === 0) pool = shuffle(WORDS, rand);
+            out.push(pool[i % pool.length]);
         }
-        setGeneratedText(result);
+        return out.join(' ');
+    }
+
+    // Draw sentences from a shuffled pool, reshuffling on each full pass so
+    // long outputs never repeat the same block verbatim.
+    let pool = shuffle(SENTENCES, rand);
+    let drawn = 0;
+    const nextSentence = () => {
+        if (drawn > 0 && drawn % pool.length === 0) pool = shuffle(SENTENCES, rand);
+        return pool[drawn++ % pool.length];
     };
 
-    useEffect(() => { generateLorem(); /* eslint-disable-next-line */ }, []);
+    if (type === 'sentences') {
+        const out: string[] = [];
+        for (let i = 0; i < count; i++) out.push(nextSentence());
+        return out.join(' ');
+    }
 
-    const copy = () => {
+    const paragraphs: string[] = [];
+    for (let p = 0; p < count; p++) {
+        const len = 4 + Math.floor(rand() * 3);
+        const sentences: string[] = [];
+        for (let i = 0; i < len; i++) sentences.push(nextSentence());
+        paragraphs.push(sentences.join(' '));
+    }
+    return paragraphs.join('\n\n');
+}
+
+export default function LoremIpsumGenerator() {
+    const { locale, t } = useLanguage();
+    const tt = t.pages.lorem;
+    const s = locale === 'th'
+        ? { copyFailed: 'คัดลอกไม่สำเร็จ', words: 'คำ', characters: 'อักขระ' }
+        : { copyFailed: 'Copy failed', words: 'words', characters: 'characters' };
+
+    const [count, setCount] = useState(3);
+    const [countInput, setCountInput] = useState('3');
+    const [type, setType] = useState<GenerateType>('paragraphs');
+    const [seed, setSeed] = useState(0);
+
+    const generatedText = useMemo(() => buildLorem(count, type, seed), [count, type, seed]);
+    const wordCount = useMemo(() => generatedText.split(/\s+/).filter(Boolean).length, [generatedText]);
+
+    const handleCountChange = (raw: string) => {
+        setCountInput(raw);
+        const parsed = parseInt(raw, 10);
+        if (!Number.isNaN(parsed)) setCount(Math.max(1, Math.min(100, parsed)));
+    };
+
+    const regenerate = () => {
+        setSeed(Math.floor(Math.random() * 0xffffffff) || 1);
+        toast.success(tt.successToast);
+    };
+
+    const copy = async () => {
         if (!generatedText) return;
-        navigator.clipboard.writeText(generatedText);
-        toast.success(tt.copied);
+        try {
+            await navigator.clipboard.writeText(generatedText);
+            toast.success(tt.copied);
+        } catch {
+            toast.error(s.copyFailed);
+        }
     };
 
     return (
@@ -69,8 +139,10 @@ export default function LoremIpsumGenerator() {
                             type="number"
                             min={1}
                             max={100}
-                            value={count}
-                            onChange={(e) => setCount(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                            value={countInput}
+                            onChange={(e) => handleCountChange(e.target.value)}
+                            onBlur={() => setCountInput(String(count))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') regenerate(); }}
                         />
                     </div>
                     <div>
@@ -86,7 +158,7 @@ export default function LoremIpsumGenerator() {
                         />
                     </div>
                     <div className="flex">
-                        <PrimaryButton onClick={() => { generateLorem(); toast.success(tt.successToast); }} className="w-full">
+                        <PrimaryButton onClick={regenerate} className="w-full">
                             <RefreshCw className="w-4 h-4" />
                             {tt.generate}
                         </PrimaryButton>
@@ -97,8 +169,9 @@ export default function LoremIpsumGenerator() {
             <ToolCard className="relative group">
                 <button
                     onClick={copy}
-                    className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-[var(--color-wine-100)] text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)] opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-[var(--color-wine-100)] text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 transition-opacity"
                     title={tt.copy}
+                    aria-label={tt.copy}
                 >
                     <Copy className="w-4 h-4" />
                 </button>
@@ -106,7 +179,6 @@ export default function LoremIpsumGenerator() {
                     key={generatedText}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
-                    className="prose-style"
                 >
                     {generatedText.split('\n\n').map((para, i) => (
                         <p key={i} className="text-[15px] text-[var(--color-smoke-600)] leading-relaxed mb-4 last:mb-0">
@@ -114,6 +186,9 @@ export default function LoremIpsumGenerator() {
                         </p>
                     ))}
                 </motion.div>
+                <p className="mt-5 pt-4 border-t border-[var(--color-line)] text-[12px] text-[var(--color-ink-3)]">
+                    {wordCount.toLocaleString()} {s.words} · {generatedText.length.toLocaleString()} {s.characters}
+                </p>
             </ToolCard>
         </ToolShell>
     );

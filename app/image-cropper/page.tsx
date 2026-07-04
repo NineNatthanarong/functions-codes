@@ -4,22 +4,37 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Download, RotateCw, FlipHorizontal, FlipVertical, Crop, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, FieldLabel, PrimaryButton, SecondaryButton, GhostButton, SegmentedControl, TextInput } from '@/components/ToolShell';
 
 type Ratio = 'free' | '1:1' | '4:3' | '3:2' | '16:9';
 type Format = 'image/png' | 'image/jpeg' | 'image/webp';
 type Box = { x: number; y: number; w: number; h: number };
 
+const RATIOS: Record<Ratio, number | null> = { free: null, '1:1': 1, '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9 };
+const MAX_OUT = 8192;
+
 export default function ImageCropperPage() {
     const t = useT();
     const tt = t.pages.cropper;
+    const { locale } = useLanguage();
+    const s = locale === 'th'
+        ? {
+            changeImage: 'เปลี่ยนรูป',
+            cropArea: 'พื้นที่ครอบ — ใช้ปุ่มลูกศรเพื่อเลื่อน กด Shift ค้างพร้อมลูกศรเพื่อปรับขนาด',
+            rotateTooLarge: 'รูปใหญ่เกินไปสำหรับการหมุนบนอุปกรณ์นี้ ยกเลิกการหมุนแล้ว',
+        }
+        : {
+            changeImage: 'Change image',
+            cropArea: 'Crop area — use arrow keys to move, hold Shift with arrows to resize',
+            rotateTooLarge: 'Image too large to rotate on this device — rotation was reset',
+        };
 
     const [file, setFile] = useState<File | null>(null);
     const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
     const [imgUrl, setImgUrl] = useState<string | null>(null);
     const [ratio, setRatio] = useState<Ratio>('free');
-    const [crop, setCrop] = useState<Box>({ x: 0, y: 0, w: 1, h: 1 }); // normalized 0..1 of natural image
+    const [crop, setCrop] = useState<Box>({ x: 0, y: 0, w: 1, h: 1 }); // normalized 0..1 of the (transformed) image
     const [rotate, setRotate] = useState(0);
     const [flipH, setFlipH] = useState(false);
     const [flipV, setFlipV] = useState(false);
@@ -28,10 +43,21 @@ export default function ImageCropperPage() {
     const [outW, setOutW] = useState(800);
     const [outH, setOutH] = useState(600);
     const [drag, setDrag] = useState<null | { mode: 'move' | 'resize'; corner?: string; startX: number; startY: number; startBox: Box }>(null);
+    const [dragOver, setDragOver] = useState(false);
+    const [exporting, setExporting] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+    // Offscreen canvas holding the image with rotate/flip baked in (null = identity transform)
+    const workCanvasRef = useRef<HTMLCanvasElement | null>(null);
+    const [workUrl, setWorkUrl] = useState<string | null>(null);
+    // Latest bilingual strings for async canvas callbacks, without making the
+    // bake effect re-run (and re-draw a full-res canvas) on locale change.
+    const sRef = useRef(s);
+    useEffect(() => {
+        sRef.current = s;
+    });
 
-    const onUpload = (f: File) => {
+    const onUpload = useCallback((f: File) => {
         if (!f.type.startsWith('image/')) {
             toast.error(t.common.pleaseSelectImage); return;
         }
@@ -51,19 +77,87 @@ export default function ImageCropperPage() {
             toast.error(t.common.errorTryAgain);
         };
         img.src = url;
-    };
+    }, [t]);
 
-    // Free the blob URL whenever it changes or the component unmounts
+    // Free the blob URLs whenever they change or the component unmounts
     useEffect(() => {
         return () => {
             if (imgUrl) URL.revokeObjectURL(imgUrl);
         };
     }, [imgUrl]);
+    useEffect(() => {
+        return () => {
+            if (workUrl) URL.revokeObjectURL(workUrl);
+        };
+    }, [workUrl]);
 
-    const ratios: Record<Ratio, number | null> = { free: null, '1:1': 1, '4:3': 4 / 3, '3:2': 3 / 2, '16:9': 16 / 9 };
+    // Paste-from-clipboard support (e.g. screenshots)
+    useEffect(() => {
+        const onPaste = (e: ClipboardEvent) => {
+            const f = e.clipboardData?.files?.[0];
+            if (f && f.type.startsWith('image/')) {
+                e.preventDefault();
+                onUpload(f);
+            }
+        };
+        window.addEventListener('paste', onPaste);
+        return () => window.removeEventListener('paste', onPaste);
+    }, [onUpload]);
+
+    // Dimensions of the working (rotated/flipped) image. Crop coordinates,
+    // the preview container, and the exporter all live in this space, so
+    // what you see inside the crop window is exactly what gets exported.
+    const rot = ((rotate % 360) + 360) % 360;
+    const swapDims = rot === 90 || rot === 270;
+    const srcW = imgEl ? (swapDims ? imgEl.naturalHeight : imgEl.naturalWidth) : 1;
+    const srcH = imgEl ? (swapDims ? imgEl.naturalWidth : imgEl.naturalHeight) : 1;
+
+    // Bake rotate/flip into an offscreen canvas and use it as the preview
+    // source, instead of CSS-transforming the <img> over an untransformed
+    // crop box (which broke WYSIWYG and clipped the preview at 90°/270°).
+    useEffect(() => {
+        if (!imgEl) return;
+        const r = ((rotate % 360) + 360) % 360;
+        if (r === 0 && !flipH && !flipV) {
+            workCanvasRef.current = null;
+            setWorkUrl(null);
+            return;
+        }
+        const swap = r === 90 || r === 270;
+        const w = swap ? imgEl.naturalHeight : imgEl.naturalWidth;
+        const h = swap ? imgEl.naturalWidth : imgEl.naturalHeight;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.translate(w / 2, h / 2);
+        ctx.rotate((r * Math.PI) / 180);
+        ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
+        ctx.drawImage(imgEl, -imgEl.naturalWidth / 2, -imgEl.naturalHeight / 2);
+        workCanvasRef.current = canvas;
+        let cancelled = false;
+        canvas.toBlob((blob) => {
+            if (cancelled) return;
+            if (!blob) {
+                // Some platforms (e.g. iOS Safari with very large photos) return
+                // null for oversized canvases. Undo the rotate/flip so the preview,
+                // aspect box, dimensions, and export all stay consistent — the
+                // identity case above short-circuits, so this cannot loop.
+                workCanvasRef.current = null;
+                toast.error(sRef.current.rotateTooLarge);
+                setRotate(0); setFlipH(false); setFlipV(false);
+                return;
+            }
+            setWorkUrl(URL.createObjectURL(blob));
+        }, 'image/png');
+        return () => { cancelled = true; };
+    }, [imgEl, rotate, flipH, flipV]);
+
+    const displayUrl = workUrl ?? imgUrl;
 
     const applyRatio = useCallback((r: Ratio, c: Box, naturalW: number, naturalH: number): Box => {
-        const target = ratios[r];
+        const target = RATIOS[r];
         if (!target) return c;
         const cropRatio = (c.w * naturalW) / (c.h * naturalH);
         if (Math.abs(cropRatio - target) < 0.01) return c;
@@ -71,16 +165,23 @@ export default function ImageCropperPage() {
         const newHpx = (c.w * naturalW) / target;
         const newH = newHpx / naturalH;
         if (c.y + newH > 1) {
-            const newWpx = (c.h * naturalH) * target;
-            return { ...c, w: newWpx / naturalW };
+            // Widen instead — clamped to the image edge; if even the clamped
+            // width overflows the ratio, shrink height to compensate.
+            let w = ((c.h * naturalH) * target) / naturalW;
+            let h = c.h;
+            if (w > 1 - c.x) {
+                w = 1 - c.x;
+                h = (w * naturalW) / target / naturalH;
+            }
+            return { ...c, w, h };
         }
         return { ...c, h: newH };
     }, []);
 
     useEffect(() => {
         if (!imgEl) return;
-        setCrop((c) => applyRatio(ratio, c, imgEl.naturalWidth, imgEl.naturalHeight));
-    }, [ratio, imgEl, applyRatio]);
+        setCrop((c) => applyRatio(ratio, c, srcW, srcH));
+    }, [ratio, imgEl, srcW, srcH, applyRatio]);
 
     // Pointer-driven crop handles. We use window-level listeners (not on the
     // element that received pointerdown) because pointer capture would otherwise
@@ -129,60 +230,88 @@ export default function ImageCropperPage() {
                 next.h = Math.max(0.05, next.h);
             }
 
-            if (imgEl) next = applyRatio(ratio, next, imgEl.naturalWidth, imgEl.naturalHeight);
+            next = applyRatio(ratio, next, srcW, srcH);
             setCrop(next);
         };
         const up = () => setDrag(null);
+        const key = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                setCrop(drag.startBox);
+                setDrag(null);
+            }
+        };
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', up);
         window.addEventListener('pointercancel', up);
+        window.addEventListener('keydown', key);
         return () => {
             window.removeEventListener('pointermove', move);
             window.removeEventListener('pointerup', up);
             window.removeEventListener('pointercancel', up);
+            window.removeEventListener('keydown', key);
         };
-    }, [drag, applyRatio, imgEl, ratio]);
+    }, [drag, applyRatio, ratio, srcW, srcH]);
+
+    // Arrow keys nudge the crop box when it has focus; Shift+arrows resize.
+    const onCropKeyDown = (e: React.KeyboardEvent) => {
+        const step = 0.01;
+        let { x, y, w, h } = crop;
+        let handled = true;
+        if (e.shiftKey) {
+            if (e.key === 'ArrowRight') w = Math.min(1 - x, w + step);
+            else if (e.key === 'ArrowLeft') w = Math.max(0.05, w - step);
+            else if (e.key === 'ArrowDown') h = Math.min(1 - y, h + step);
+            else if (e.key === 'ArrowUp') h = Math.max(0.05, h - step);
+            else handled = false;
+        } else {
+            if (e.key === 'ArrowRight') x = Math.min(1 - w, x + step);
+            else if (e.key === 'ArrowLeft') x = Math.max(0, x - step);
+            else if (e.key === 'ArrowDown') y = Math.min(1 - h, y + step);
+            else if (e.key === 'ArrowUp') y = Math.max(0, y - step);
+            else handled = false;
+        }
+        if (!handled) return;
+        e.preventDefault();
+        setCrop(applyRatio(ratio, { x, y, w, h }, srcW, srcH));
+    };
 
     // Keep output dimensions in sync with crop selection (live preview).
     // User can still type a custom number; we only update on crop changes,
     // not on every keystroke in the W/H fields.
     useEffect(() => {
         if (!imgEl) return;
-        setOutW(Math.round(crop.w * imgEl.naturalWidth));
-        setOutH(Math.round(crop.h * imgEl.naturalHeight));
-    }, [crop, imgEl]);
+        setOutW(Math.round(crop.w * srcW));
+        setOutH(Math.round(crop.h * srcH));
+    }, [crop, imgEl, srcW, srcH]);
 
     const reset = () => setCrop({ x: 0, y: 0, w: 1, h: 1 });
 
     const download = () => {
-        if (!imgEl || !file) return;
-        const naturalW = imgEl.naturalWidth;
-        const naturalH = imgEl.naturalHeight;
-        const sx = crop.x * naturalW;
-        const sy = crop.y * naturalH;
-        const sw = crop.w * naturalW;
-        const sh = crop.h * naturalH;
+        if (!imgEl || !file || exporting) return;
+        const source: CanvasImageSource = workCanvasRef.current ?? imgEl;
+        const sx = crop.x * srcW;
+        const sy = crop.y * srcH;
+        const sw = crop.w * srcW;
+        const sh = crop.h * srcH;
 
-        const targetW = outW;
-        const targetH = outH;
+        const targetW = Math.max(1, Math.min(MAX_OUT, Math.round(outW) || 1));
+        const targetH = Math.max(1, Math.min(MAX_OUT, Math.round(outH) || 1));
         const canvas = document.createElement('canvas');
-        // For rotated output, swap if 90/270
-        const r = ((rotate % 360) + 360) % 360;
-        const swap = r === 90 || r === 270;
-        canvas.width = swap ? targetH : targetW;
-        canvas.height = swap ? targetW : targetH;
+        canvas.width = targetW;
+        canvas.height = targetH;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(source, sx, sy, sw, sh, 0, 0, targetW, targetH);
 
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.rotate((r * Math.PI) / 180);
-        ctx.scale(flipH ? -1 : 1, flipV ? -1 : 1);
-        ctx.drawImage(imgEl, sx, sy, sw, sh, -targetW / 2, -targetH / 2, targetW, targetH);
-        ctx.restore();
-
+        setExporting(true);
         canvas.toBlob((blob) => {
-            if (!blob) return;
+            setExporting(false);
+            if (!blob) {
+                toast.error(t.common.errorTryAgain);
+                return;
+            }
             const url = URL.createObjectURL(blob);
             const ext = format.split('/')[1];
             const link = document.createElement('a');
@@ -204,19 +333,40 @@ export default function ImageCropperPage() {
             kicker="Image"
             width="xwide"
         >
+            <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onUpload(f);
+                    e.currentTarget.value = '';
+                }}
+            />
             {!imgEl ? (
                 <div className="max-w-xl mx-auto">
                     <div
-                        className="rounded-3xl border-2 border-dashed border-[var(--color-wine-200)] bg-white hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50 transition-all p-12 text-center cursor-pointer group"
+                        role="button"
+                        tabIndex={0}
+                        aria-label={tt.uploadTitle}
+                        className={`rounded-3xl border-2 border-dashed transition-all p-12 text-center cursor-pointer group hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50 ${dragOver ? 'border-[var(--color-wine-400)] bg-[var(--color-wine-50)]/50' : 'border-[var(--color-wine-200)] bg-white'}`}
                         onClick={() => fileRef.current?.click()}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                fileRef.current?.click();
+                            }
+                        }}
+                        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                        onDragLeave={() => setDragOver(false)}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOver(false);
+                            const f = e.dataTransfer.files?.[0];
+                            if (f) onUpload(f);
+                        }}
                     >
-                        <input
-                            ref={fileRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
-                        />
                         <motion.div
                             animate={{ y: [0, -4, 0] }}
                             transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
@@ -229,22 +379,26 @@ export default function ImageCropperPage() {
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6">
+                <div>
+                    <div className="flex justify-end mb-3">
+                        <GhostButton onClick={() => fileRef.current?.click()}>
+                            <Upload className="w-3.5 h-3.5" />
+                            {s.changeImage}
+                        </GhostButton>
+                    </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-[1.2fr_1fr] gap-6">
                     <ToolCard className="p-3">
                         <div
                             ref={containerRef}
                             className="relative w-full bg-[var(--color-wine-50)] rounded-2xl overflow-hidden select-none touch-none"
-                            style={{ aspectRatio: `${imgEl.naturalWidth} / ${imgEl.naturalHeight}` }}
+                            style={{ aspectRatio: `${srcW} / ${srcH}` }}
                         >
-                            {/* base image — receives the live transform */}
+                            {/* base image — rotate/flip already baked into displayUrl */}
                             <img
-                                src={imgUrl ?? ''}
+                                src={displayUrl ?? ''}
                                 alt="source"
                                 draggable={false}
                                 className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-                                style={{
-                                    transform: `rotate(${rotate}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`,
-                                }}
                             />
 
                             {/* dim overlay */}
@@ -253,7 +407,11 @@ export default function ImageCropperPage() {
                             {/* crop window */}
                             <div
                                 onPointerDown={(e) => onPointerDown(e, 'move')}
-                                className="absolute border-[1.5px] border-[var(--color-cream)] cursor-move bg-transparent"
+                                onKeyDown={onCropKeyDown}
+                                tabIndex={0}
+                                role="group"
+                                aria-label={s.cropArea}
+                                className="absolute border-[1.5px] border-[var(--color-cream)] cursor-move bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-cream)]/80"
                                 style={{
                                     left: `${crop.x * 100}%`,
                                     top: `${crop.y * 100}%`,
@@ -262,11 +420,10 @@ export default function ImageCropperPage() {
                                 }}
                             >
                                 {/* show actual image inside crop (un-dimmed). Uses an <img>
-                                    rather than background-image so the same rotate/flip
-                                    transform can apply, keeping both layers in sync. */}
+                                    sized/offset to line up exactly with the base layer. */}
                                 <div className="absolute inset-0 overflow-hidden pointer-events-none">
                                     <img
-                                        src={imgUrl ?? ''}
+                                        src={displayUrl ?? ''}
                                         alt=""
                                         draggable={false}
                                         className="absolute object-contain"
@@ -275,7 +432,6 @@ export default function ImageCropperPage() {
                                             height: `${100 / crop.h}%`,
                                             left: `${(-crop.x / crop.w) * 100}%`,
                                             top: `${(-crop.y / crop.h) * 100}%`,
-                                            transform: `rotate(${rotate}deg) scaleX(${flipH ? -1 : 1}) scaleY(${flipV ? -1 : 1})`,
                                         }}
                                     />
                                 </div>
@@ -287,10 +443,16 @@ export default function ImageCropperPage() {
                                     ))}
                                 </div>
 
+                                {/* live pixel readout */}
+                                <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-[var(--color-wine-900)]/70 text-[var(--color-cream)] text-[10px] font-medium tabular-nums whitespace-nowrap pointer-events-none">
+                                    {Math.round(crop.w * srcW)} × {Math.round(crop.h * srcH)}
+                                </span>
+
                                 {/* corner handles */}
                                 {(['nw', 'ne', 'sw', 'se'] as const).map((c) => (
                                     <div
                                         key={c}
+                                        aria-hidden="true"
                                         onPointerDown={(e) => { e.stopPropagation(); onPointerDown(e, 'resize', c); }}
                                         className="absolute w-3 h-3 bg-[var(--color-cream)] border-2 border-[var(--color-wine-700)] rounded-full"
                                         style={{
@@ -317,6 +479,7 @@ export default function ImageCropperPage() {
                                         { value: 'free' as Ratio, label: tt.ratioFree },
                                         { value: '1:1' as Ratio, label: '1:1' },
                                         { value: '4:3' as Ratio, label: '4:3' },
+                                        { value: '3:2' as Ratio, label: '3:2' },
                                         { value: '16:9' as Ratio, label: '16:9' },
                                     ]}
                                 />
@@ -329,20 +492,22 @@ export default function ImageCropperPage() {
                                 </SecondaryButton>
                                 <SecondaryButton onClick={() => setFlipH((f) => !f)} className="py-2.5">
                                     <FlipHorizontal className="w-4 h-4" />
+                                    <span className="sr-only">{tt.flipH}</span>
                                 </SecondaryButton>
                                 <SecondaryButton onClick={() => setFlipV((f) => !f)} className="py-2.5">
                                     <FlipVertical className="w-4 h-4" />
+                                    <span className="sr-only">{tt.flipV}</span>
                                 </SecondaryButton>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <FieldLabel>{tt.widthLabel}</FieldLabel>
-                                    <TextInput type="number" value={outW} onChange={(e) => setOutW(parseInt(e.target.value || '0'))} />
+                                    <TextInput type="number" min={1} max={MAX_OUT} aria-label={tt.widthLabel} value={outW} onChange={(e) => setOutW(parseInt(e.target.value || '0'))} />
                                 </div>
                                 <div>
                                     <FieldLabel>{tt.heightLabel}</FieldLabel>
-                                    <TextInput type="number" value={outH} onChange={(e) => setOutH(parseInt(e.target.value || '0'))} />
+                                    <TextInput type="number" min={1} max={MAX_OUT} aria-label={tt.heightLabel} value={outH} onChange={(e) => setOutH(parseInt(e.target.value || '0'))} />
                                 </div>
                             </div>
 
@@ -369,6 +534,7 @@ export default function ImageCropperPage() {
                                         step={0.01}
                                         value={quality}
                                         onChange={(e) => setQuality(parseFloat(e.target.value))}
+                                        aria-label={tt.quality}
                                         className="w-full h-2 bg-[var(--color-wine-100)] rounded-full appearance-none cursor-pointer accent-[var(--color-wine-700)]"
                                     />
                                 </div>
@@ -379,13 +545,14 @@ export default function ImageCropperPage() {
                                     <RefreshCw className="w-3.5 h-3.5" />
                                     {tt.reset}
                                 </GhostButton>
-                                <PrimaryButton onClick={download} className="flex-1 py-3">
+                                <PrimaryButton onClick={download} disabled={exporting} className="flex-1 py-3">
                                     <Download className="w-4 h-4" />
                                     {tt.download}
                                 </PrimaryButton>
                             </div>
                         </div>
                     </ToolCard>
+                    </div>
                 </div>
             )}
         </ToolShell>

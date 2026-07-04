@@ -4,37 +4,37 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { Heart, ShieldCheck, ArrowUpRight } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { translations } from '@/lib/i18n/translations';
+import { TOOLS, type ToolCategory } from '@/lib/tools';
+
+const CATEGORY_ORDER: ToolCategory[] = ['file', 'image', 'dev', 'write', 'audio', 'fun'];
 
 export default function Footer() {
     const { t, locale } = useLanguage();
 
-    const sections: { label: string; items: { href: string; label: string }[] }[] = [
-        {
-            label: locale === 'th' ? 'ไฟล์' : 'Files',
-            items: [
-                { href: '/file-converter', label: t.tools['file-converter'].title },
-                { href: '/pdf-tools', label: t.tools['pdf-tools'].title },
-                { href: '/markdown-editor', label: t.tools['markdown-editor'].title },
-            ],
-        },
-        {
-            label: locale === 'th' ? 'รูปและสี' : 'Image & color',
-            items: [
-                { href: '/bgrm', label: t.tools['bgrm'].title },
-                { href: '/image-compressor', label: t.tools['image-compressor'].title },
-                { href: '/color-palette', label: t.tools['color-palette'].title },
-            ],
-        },
-        {
-            label: locale === 'th' ? 'นักพัฒนา' : 'Developer',
-            items: [
-                { href: '/json-formatter', label: t.tools['json-formatter'].title },
-                { href: '/diff-viewer', label: t.tools['diff-viewer'].title },
-                { href: '/unit-converter', label: t.tools['unit-converter'].title },
-                { href: '/qr-generator', label: t.tools['qr-generator'].title },
-            ],
-        },
-    ];
+    const categoryLabels: Record<ToolCategory, string> = {
+        file: t.home.categoryFile,
+        image: t.home.categoryImage,
+        dev: t.home.categoryDev,
+        write: t.home.categoryWrite,
+        audio: t.home.categoryAudio,
+        fun: t.home.categoryFun,
+    };
+
+    // every tool, grouped by category — derived from the central registry
+    const sections = CATEGORY_ORDER
+        .map((cat) => ({
+            label: categoryLabels[cat],
+            items: TOOLS
+                .filter((tool) => tool.category === cat)
+                .map((tool) => ({
+                    href: '/' + tool.slug,
+                    label:
+                        (translations[locale].tools as Record<string, { title?: string }>)[tool.slug]?.title
+                        ?? tool.slug,
+                })),
+        }))
+        .filter((s) => s.items.length > 0);
 
     return (
         <footer className="relative mt-24 border-t border-[var(--color-line)] bg-white">
@@ -79,7 +79,7 @@ export default function Footer() {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-10">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-10 gap-y-12">
                         {sections.map((section) => (
                             <div key={section.label}>
                                 <p className="kicker text-[var(--color-ink-3)] mb-5">

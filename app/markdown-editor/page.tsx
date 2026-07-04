@@ -1,22 +1,66 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Download, Save, FileText, Eye, Code, Trash2, Edit } from 'lucide-react';
+import { Download, Save, FileText, Eye, Code, Trash2, Edit, Copy, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { GhostButton, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
+
+const wordSegmenter =
+    typeof Intl !== 'undefined' && 'Segmenter' in Intl
+        ? new Intl.Segmenter(['th', 'en'], { granularity: 'word' })
+        : null;
+
+const countWords = (text: string) => {
+    if (wordSegmenter) {
+        let count = 0;
+        for (const seg of wordSegmenter.segment(text)) {
+            if (seg.isWordLike) count += 1;
+        }
+        return count;
+    }
+    return text.trim().split(/\s+/).filter(Boolean).length;
+};
+
+const escapeHtml = (value: string) =>
+    value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export default function MarkdownEditor() {
     const t = useT();
+    const { locale } = useLanguage();
     const tt = t.pages.markdown;
+    const s = locale === 'th' ? {
+        exportTitle: 'เอกสาร Markdown',
+        openFile: 'เปิดไฟล์',
+        openedToast: 'เปิดไฟล์แล้ว',
+        notTextToast: 'รองรับเฉพาะไฟล์ข้อความ (.md, .txt)',
+        mdToast: 'ดาวน์โหลดไฟล์ .md แล้ว',
+        copyMarkdown: 'คัดลอก Markdown',
+        copyHtml: 'คัดลอก HTML',
+        copiedToast: 'คัดลอกแล้ว',
+        copyFailToast: 'คัดลอกไม่สำเร็จ',
+    } : {
+        exportTitle: 'Markdown export',
+        openFile: 'Open file',
+        openedToast: 'File opened',
+        notTextToast: 'Only text files are supported (.md, .txt)',
+        mdToast: 'Downloaded .md file',
+        copyMarkdown: 'Copy Markdown',
+        copyHtml: 'Copy HTML',
+        copiedToast: 'Copied to clipboard',
+        copyFailToast: 'Failed to copy',
+    };
     const [markdown, setMarkdown] = useState<string>(tt.defaultText);
     const [wordCount, setWordCount] = useState(0);
     const [charCount, setCharCount] = useState(0);
+    const [pdfBusy, setPdfBusy] = useState(false);
+    const dirtyRef = useRef(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const saved = localStorage.getItem('markdown-draft');
@@ -28,19 +72,29 @@ export default function MarkdownEditor() {
     }, []);
 
     useEffect(() => {
-        const timer = setTimeout(() => {
-            localStorage.setItem('markdown-draft', markdown);
-        }, 5000);
-        const words = markdown.trim().split(/\s+/).filter(Boolean).length;
-        setWordCount(words);
+        // Only persist after the user has actually edited, so the sample text
+        // is never saved as a "draft" on a first visit.
+        const saveDraft = () => {
+            if (dirtyRef.current) localStorage.setItem('markdown-draft', markdown);
+        };
+        const timer = setTimeout(saveDraft, 5000);
+        window.addEventListener('beforeunload', saveDraft);
+        setWordCount(countWords(markdown));
         setCharCount(markdown.length);
-        return () => clearTimeout(timer);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('beforeunload', saveDraft);
+            // Flush pending edits so navigating away never loses the last 5s.
+            saveDraft();
+        };
     }, [markdown]);
 
     const exportAsHTML = () => {
+        const heading = markdown.match(/^#{1,6}\s+(.+?)\s*$/m)?.[1];
+        const docTitle = escapeHtml(heading || s.exportTitle);
         const html = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Markdown export</title>
+<html lang="${locale}">
+<head><meta charset="UTF-8"><title>${docTitle}</title>
 <style>
 body { font-family: 'IBM Plex Sans Thai', system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; color: #1c0d12; background: #f7f4f4; }
 h1, h2, h3 { color: #552834; }
@@ -67,10 +121,27 @@ a { color: #552834; }
 
     const exportAsPDF = async () => {
         const element = document.getElementById('markdown-preview');
-        if (!element) return;
+        if (!element || pdfBusy) return;
+        setPdfBusy(true);
         toast.info(tt.pdfBuildingToast);
         try {
-            const canvas = await html2canvas(element, { scale: 2, useCORS: true, logging: false });
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                logging: false,
+                // Capture the full document, not just the visible scroll box.
+                height: element.scrollHeight,
+                windowHeight: element.scrollHeight,
+                onclone: (doc) => {
+                    let node = doc.getElementById('markdown-preview') as HTMLElement | null;
+                    while (node && node !== doc.body) {
+                        node.style.height = 'auto';
+                        node.style.maxHeight = 'none';
+                        node.style.overflow = 'visible';
+                        node = node.parentElement;
+                    }
+                },
+            });
             const imgData = canvas.toDataURL('image/png');
             const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
             const imgWidth = 210;
@@ -80,7 +151,7 @@ a { color: #552834; }
             let position = 0;
             pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
             heightLeft -= pageHeight;
-            while (heightLeft >= 0) {
+            while (heightLeft > 0) {
                 position = heightLeft - imgHeight;
                 pdf.addPage();
                 pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
@@ -91,7 +162,44 @@ a { color: #552834; }
         } catch (err) {
             console.error(err);
             toast.error(tt.pdfFailToast);
+        } finally {
+            setPdfBusy(false);
         }
+    };
+
+    const downloadMarkdown = () => {
+        const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'markdown-export.md';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast.success(s.mdToast);
+    };
+
+    const copyText = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            toast.success(s.copiedToast);
+        } catch {
+            toast.error(s.copyFailToast);
+        }
+    };
+
+    const loadFile = (file: File) => {
+        const isText = /\.(md|markdown|txt)$/i.test(file.name) || file.type.startsWith('text/');
+        if (!isText) {
+            toast.error(s.notTextToast);
+            return;
+        }
+        file.text().then((text) => {
+            dirtyRef.current = true;
+            setMarkdown(text);
+            toast.success(s.openedToast);
+        });
     };
 
     const insertMarkdown = (syntax: string, placeholder = 'text') => {
@@ -99,6 +207,7 @@ a { color: #552834; }
         if (!ta) return;
         const start = ta.selectionStart;
         const end = ta.selectionEnd;
+        const hadSelection = end > start;
         const sel = markdown.substring(start, end) || placeholder;
         const before = markdown.substring(0, start);
         const after = markdown.substring(end);
@@ -113,16 +222,44 @@ a { color: #552834; }
             case 'h2': newText = `${before}## ${sel}${after}`; cursor = start + 3; break;
             case 'ul': newText = `${before}- ${sel}${after}`; cursor = start + 2; break;
         }
+        // Select the inserted placeholder so the user can type over it directly.
+        let selectEnd = cursor;
+        if (syntax === 'link') selectEnd = cursor + 'url'.length;
+        else if (!hadSelection) selectEnd = cursor + placeholder.length;
+        dirtyRef.current = true;
         setMarkdown(newText);
-        setTimeout(() => { ta.focus(); ta.setSelectionRange(cursor, cursor); }, 0);
+        setTimeout(() => { ta.focus(); ta.setSelectionRange(cursor, selectEnd); }, 0);
+    };
+
+    const handleEditorKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+            const key = e.key.toLowerCase();
+            if (key === 'b') { e.preventDefault(); insertMarkdown('bold'); return; }
+            if (key === 'i') { e.preventDefault(); insertMarkdown('italic'); return; }
+        }
+        if (e.key === 'Tab' && !e.shiftKey) {
+            e.preventDefault();
+            const ta = e.currentTarget;
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            dirtyRef.current = true;
+            setMarkdown(markdown.substring(0, start) + '  ' + markdown.substring(end));
+            setTimeout(() => { ta.focus(); ta.setSelectionRange(start + 2, start + 2); }, 0);
+        }
     };
 
     const clearDraft = () => {
-        if (confirm(tt.confirmClear)) {
-            setMarkdown('');
-            localStorage.removeItem('markdown-draft');
-            toast.success(tt.clearedToast);
-        }
+        toast(tt.confirmClear, {
+            action: {
+                label: tt.clear,
+                onClick: () => {
+                    dirtyRef.current = false;
+                    setMarkdown('');
+                    localStorage.removeItem('markdown-draft');
+                    toast.success(tt.clearedToast);
+                },
+            },
+        });
     };
 
     const toolBtn = "px-3 py-2 rounded-xl text-[13px] font-medium text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)] transition-colors";
@@ -146,18 +283,42 @@ a { color: #552834; }
                     <span className="w-px h-5 bg-[var(--color-wine-100)] mx-1" />
                     <button onClick={() => insertMarkdown('link')} className={toolBtn}>Link</button>
                     <button onClick={() => insertMarkdown('ul')} className={toolBtn}>• List</button>
+                    <span className="w-px h-5 bg-[var(--color-wine-100)] mx-1" />
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`${toolBtn} inline-flex items-center gap-1.5`}
+                    >
+                        <Upload className="w-3.5 h-3.5" />
+                        {s.openFile}
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".md,.markdown,.txt,text/markdown,text/plain"
+                        className="hidden"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) loadFile(file);
+                            e.target.value = '';
+                        }}
+                    />
                 </div>
                 <div className="flex items-center gap-2">
+                    <SecondaryButton onClick={downloadMarkdown}>
+                        <FileText className="w-3.5 h-3.5" />
+                        .md
+                    </SecondaryButton>
                     <SecondaryButton onClick={exportAsHTML}>
                         <Code className="w-3.5 h-3.5" />
                         {tt.exportHtml}
                     </SecondaryButton>
-                    <PrimaryButton onClick={exportAsPDF}>
+                    <PrimaryButton onClick={exportAsPDF} disabled={pdfBusy}>
                         <Download className="w-3.5 h-3.5" />
                         {tt.exportPdf}
                     </PrimaryButton>
                     <GhostButton tone="danger" onClick={clearDraft}>
                         <Trash2 className="w-3.5 h-3.5" />
+                        <span className="sr-only">{tt.clear}</span>
                     </GhostButton>
                 </div>
             </div>
@@ -173,14 +334,37 @@ a { color: #552834; }
                             <FileText className="w-3.5 h-3.5" />
                             {tt.editor}
                         </h3>
-                        <div className="text-[12px] text-[var(--color-smoke-600)]">
-                            {wordCount} {tt.words} · {charCount} {tt.chars}
+                        <div className="flex items-center gap-2">
+                            <div className="text-[12px] text-[var(--color-smoke-600)]">
+                                {wordCount} {tt.words} · {charCount} {tt.chars}
+                            </div>
+                            <button
+                                onClick={() => copyText(markdown)}
+                                aria-label={s.copyMarkdown}
+                                title={s.copyMarkdown}
+                                className="p-1.5 rounded-lg text-[var(--color-wine-700)] hover:bg-[var(--color-wine-100)] transition-colors"
+                            >
+                                <Copy className="w-3.5 h-3.5" />
+                            </button>
                         </div>
                     </div>
                     <textarea
                         id="markdown-input"
                         value={markdown}
-                        onChange={(e) => setMarkdown(e.target.value)}
+                        onChange={(e) => {
+                            dirtyRef.current = true;
+                            setMarkdown(e.target.value);
+                        }}
+                        onKeyDown={handleEditorKeyDown}
+                        onDragOver={(e) => {
+                            if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+                        }}
+                        onDrop={(e) => {
+                            const file = e.dataTransfer.files?.[0];
+                            if (!file) return;
+                            e.preventDefault();
+                            loadFile(file);
+                        }}
                         className="flex-grow w-full p-6 resize-none outline-none font-mono text-[13.5px] text-[var(--color-wine-800)] bg-white"
                         placeholder="Write Markdown here..."
                     />
@@ -192,6 +376,14 @@ a { color: #552834; }
                             <Eye className="w-3.5 h-3.5" />
                             {tt.preview}
                         </h3>
+                        <button
+                            onClick={() => copyText(document.getElementById('markdown-preview')?.innerHTML ?? '')}
+                            aria-label={s.copyHtml}
+                            title={s.copyHtml}
+                            className="p-1.5 rounded-lg text-[var(--color-wine-700)] hover:bg-[var(--color-wine-100)] transition-colors"
+                        >
+                            <Copy className="w-3.5 h-3.5" />
+                        </button>
                     </div>
                     <div
                         id="markdown-preview"

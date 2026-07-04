@@ -1,24 +1,9 @@
 import { MetadataRoute } from 'next';
+import { TOOL_KEYS } from '@/lib/tools';
 
 const SITE_URL = 'https://functions.codes';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const tools = [
-        'file-converter',
-        'bgrm',
-        'image-compressor',
-        'qr-generator',
-        'json-formatter',
-        'password-generator',
-        'color-palette',
-        'lorem-ipsum',
-        'diff-viewer',
-        'unit-converter',
-        'pdf-tools',
-        'audio-editor',
-        'markdown-editor',
-    ];
-
     // Home page
     const routes: MetadataRoute.Sitemap = [
         {
@@ -29,8 +14,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
         },
     ];
 
-    // Tool pages
-    tools.forEach((tool) => {
+    // Tool pages — derived from the central registry, so new tools are never missed
+    TOOL_KEYS.forEach((tool) => {
         routes.push({
             url: `${SITE_URL}/${tool}`,
             lastModified: new Date(),

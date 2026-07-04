@@ -23,6 +23,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       const saved = localStorage.getItem(STORAGE_KEY) as Locale | null;
       if (saved === 'th' || saved === 'en') {
         setLocaleState(saved);
+      } else if (!navigator.language?.toLowerCase().startsWith('th')) {
+        // first visit from a non-Thai browser -> start in English
+        setLocaleState('en');
       }
     } catch { /* ignore */ }
     setHydrated(true);

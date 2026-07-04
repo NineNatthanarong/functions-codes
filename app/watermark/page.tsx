@@ -1,17 +1,97 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Upload, Download, Stamp, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n/LanguageProvider';
-import ToolShell, { ToolCard, FieldLabel, TextInput, PrimaryButton, SegmentedControl } from '@/components/ToolShell';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
+import ToolShell, { ToolCard, FieldLabel, TextInput, PrimaryButton } from '@/components/ToolShell';
 
 type Position = 'tl' | 'tr' | 'bl' | 'br' | 'center' | 'tile';
+
+type WatermarkSettings = {
+    text: string;
+    size: number;
+    opacity: number;
+    rotation: number;
+    color: string;
+    pos: Position;
+};
+
+function drawWatermarked(
+    canvas: HTMLCanvasElement,
+    img: HTMLImageElement,
+    width: number,
+    height: number,
+    { text, size, opacity, rotation, color, pos }: WatermarkSettings
+): boolean {
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return false;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+
+    if (text.trim()) {
+        const fontPx = (size * width) / 1000;
+        ctx.font = `600 ${Math.max(12, fontPx)}px "IBM Plex Sans Thai", "IBM Plex Sans", sans-serif`;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = opacity;
+        ctx.textBaseline = 'middle';
+
+        const measure = ctx.measureText(text);
+        const textW = measure.width;
+        const textH = Math.max(12, fontPx);
+        const padding = textH;
+
+        const drawRotated = (cx: number, cy: number) => {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate((rotation * Math.PI) / 180);
+            ctx.textAlign = 'center';
+            ctx.fillText(text, 0, 0);
+            ctx.restore();
+        };
+
+        if (pos === 'tile') {
+            const stepX = textW * 1.6;
+            const stepY = textH * 4;
+            for (let y = 0; y < height + stepY; y += stepY) {
+                for (let x = 0; x < width + stepX; x += stepX) {
+                    drawRotated(x, y);
+                }
+            }
+        } else {
+            let cx = width / 2, cy = height / 2;
+            if (pos === 'tl') { cx = padding + textW / 2; cy = padding + textH / 2; }
+            if (pos === 'tr') { cx = width - padding - textW / 2; cy = padding + textH / 2; }
+            if (pos === 'bl') { cx = padding + textW / 2; cy = height - padding - textH / 2; }
+            if (pos === 'br') { cx = width - padding - textW / 2; cy = height - padding - textH / 2; }
+            drawRotated(cx, cy);
+        }
+        ctx.globalAlpha = 1;
+    }
+    return true;
+}
 
 export default function WatermarkPage() {
     const t = useT();
     const tt = t.pages.watermark;
+    const { locale } = useLanguage();
+    const s = locale === 'th' ? {
+        readError: 'อ่านไฟล์รูปนี้ไม่ได้ ลองไฟล์อื่นดูนะ',
+        changeImage: 'เปลี่ยนรูป',
+        whiteColor: 'สีขาว',
+        blackColor: 'สีดำ',
+        pasteHint: 'หรือวางรูปจากคลิปบอร์ด (Ctrl+V)',
+    } : {
+        readError: 'Could not read this image file. Please try another one.',
+        changeImage: 'Change image',
+        whiteColor: 'White',
+        blackColor: 'Black',
+        pasteHint: 'or paste an image from the clipboard (Ctrl+V)',
+    };
     const [file, setFile] = useState<File | null>(null);
     const [imgEl, setImgEl] = useState<HTMLImageElement | null>(null);
     const [text, setText] = useState('© functions.codes');
@@ -23,7 +103,7 @@ export default function WatermarkPage() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
 
-    const onUpload = (f: File) => {
+    const onUpload = useCallback((f: File) => {
         if (!f.type.startsWith('image/')) {
             toast.error(t.common.pleaseSelectImage); return;
         }
@@ -34,76 +114,73 @@ export default function WatermarkPage() {
             setFile(f);
             URL.revokeObjectURL(url);
         };
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            toast.error(s.readError);
+        };
         img.src = url;
+    }, [t.common.pleaseSelectImage, s.readError]);
+
+    useEffect(() => {
+        const onPaste = (e: ClipboardEvent) => {
+            const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'));
+            if (f) {
+                e.preventDefault();
+                onUpload(f);
+            }
+        };
+        window.addEventListener('paste', onPaste);
+        return () => window.removeEventListener('paste', onPaste);
+    }, [onUpload]);
+
+    const onDragOverFiles = (e: React.DragEvent) => {
+        if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+    };
+    const onDropFiles = (e: React.DragEvent) => {
+        const f = e.dataTransfer.files?.[0];
+        if (f) {
+            e.preventDefault();
+            onUpload(f);
+        }
     };
 
     useEffect(() => {
         if (!imgEl || !canvasRef.current) return;
-        const canvas = canvasRef.current;
         const maxW = 1200;
         const ratio = imgEl.naturalWidth > maxW ? maxW / imgEl.naturalWidth : 1;
-        canvas.width = imgEl.naturalWidth * ratio;
-        canvas.height = imgEl.naturalHeight * ratio;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
-
-        if (text.trim()) {
-            const fontPx = (size * canvas.width) / 1000;
-            ctx.font = `600 ${Math.max(12, fontPx)}px "IBM Plex Sans Thai", "IBM Plex Sans", sans-serif`;
-            ctx.fillStyle = color;
-            ctx.globalAlpha = opacity;
-            ctx.textBaseline = 'middle';
-
-            const measure = ctx.measureText(text);
-            const textW = measure.width;
-            const textH = Math.max(12, fontPx);
-            const padding = textH;
-
-            const drawRotated = (cx: number, cy: number) => {
-                ctx.save();
-                ctx.translate(cx, cy);
-                ctx.rotate((rotation * Math.PI) / 180);
-                ctx.textAlign = 'center';
-                ctx.fillText(text, 0, 0);
-                ctx.restore();
-            };
-
-            if (pos === 'tile') {
-                const stepX = textW * 1.6;
-                const stepY = textH * 4;
-                for (let y = 0; y < canvas.height + stepY; y += stepY) {
-                    for (let x = 0; x < canvas.width + stepX; x += stepX) {
-                        drawRotated(x, y);
-                    }
-                }
-            } else {
-                let cx = canvas.width / 2, cy = canvas.height / 2;
-                if (pos === 'tl') { cx = padding + textW / 2; cy = padding + textH / 2; }
-                if (pos === 'tr') { cx = canvas.width - padding - textW / 2; cy = padding + textH / 2; }
-                if (pos === 'bl') { cx = padding + textW / 2; cy = canvas.height - padding - textH / 2; }
-                if (pos === 'br') { cx = canvas.width - padding - textW / 2; cy = canvas.height - padding - textH / 2; }
-                drawRotated(cx, cy);
-            }
-            ctx.globalAlpha = 1;
-        }
+        drawWatermarked(
+            canvasRef.current,
+            imgEl,
+            Math.round(imgEl.naturalWidth * ratio),
+            Math.round(imgEl.naturalHeight * ratio),
+            { text, size, opacity, rotation, color, pos }
+        );
     }, [imgEl, text, size, opacity, rotation, color, pos]);
 
     const download = () => {
-        if (!canvasRef.current || !file) return;
-        canvasRef.current.toBlob((blob) => {
+        if (!imgEl || !file) return;
+        const exportCanvas = document.createElement('canvas');
+        const ok = drawWatermarked(
+            exportCanvas,
+            imgEl,
+            imgEl.naturalWidth,
+            imgEl.naturalHeight,
+            { text, size, opacity, rotation, color, pos }
+        );
+        if (!ok) return;
+        const mime = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+        const ext = mime === 'image/jpeg' ? 'jpg' : 'png';
+        exportCanvas.toBlob((blob) => {
             if (!blob) return;
             const link = document.createElement('a');
-            link.download = `watermarked_${file.name.replace(/\.[^.]+$/, '')}.png`;
+            link.download = `watermarked_${file.name.replace(/\.[^.]+$/, '')}.${ext}`;
             link.href = URL.createObjectURL(blob);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
             toast.success(tt.successToast);
-        }, 'image/png');
+        }, mime, 0.92);
     };
 
     const reset = () => {
@@ -118,19 +195,25 @@ export default function WatermarkPage() {
             kicker="Watermark"
             width="xwide"
         >
+            <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) onUpload(f);
+                    e.target.value = '';
+                }}
+            />
             {!imgEl ? (
                 <div className="max-w-xl mx-auto">
                     <div
                         className="rounded-3xl border-2 border-dashed border-[var(--color-wine-200)] bg-white hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50 transition-all p-12 text-center cursor-pointer group"
                         onClick={() => fileRef.current?.click()}
+                        onDragOver={onDragOverFiles}
+                        onDrop={onDropFiles}
                     >
-                        <input
-                            ref={fileRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
-                        />
                         <motion.div
                             animate={{ y: [0, -4, 0] }}
                             transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
@@ -140,13 +223,25 @@ export default function WatermarkPage() {
                         </motion.div>
                         <h3 className="text-lg font-semibold text-[var(--color-wine-700)] mb-1.5">{tt.uploadTitle}</h3>
                         <p className="text-[var(--color-smoke-600)] text-sm">{tt.uploadHint}</p>
+                        <p className="text-[var(--color-smoke-600)] text-xs mt-1">{s.pasteHint}</p>
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6">
+                <div
+                    className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-6"
+                    onDragOver={onDragOverFiles}
+                    onDrop={onDropFiles}
+                >
                     <ToolCard className="p-3">
                         <div className="relative w-full bg-[var(--color-wine-50)] rounded-2xl overflow-hidden">
                             <canvas ref={canvasRef} className="w-full h-auto block" />
+                            <button
+                                onClick={() => fileRef.current?.click()}
+                                className="absolute top-2.5 right-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/90 border border-[var(--color-wine-100)] text-[12px] font-semibold text-[var(--color-wine-700)] hover:bg-white transition-colors shadow-sm"
+                            >
+                                <Upload className="w-3.5 h-3.5" />
+                                {s.changeImage}
+                            </button>
                         </div>
                     </ToolCard>
 
@@ -158,6 +253,7 @@ export default function WatermarkPage() {
                                     value={text}
                                     onChange={(e) => setText(e.target.value)}
                                     placeholder={tt.textPlaceholder}
+                                    aria-label={tt.textLabel}
                                 />
                             </div>
 
@@ -187,13 +283,14 @@ export default function WatermarkPage() {
                             </div>
 
                             <div>
-                                <FieldLabel hint={`${size}px`}>{tt.sizeLabel}</FieldLabel>
+                                <FieldLabel hint={`${Math.max(12, Math.round((size * imgEl.naturalWidth) / 1000))}px`}>{tt.sizeLabel}</FieldLabel>
                                 <input
                                     type="range"
                                     min={12}
                                     max={120}
                                     value={size}
                                     onChange={(e) => setSize(parseInt(e.target.value))}
+                                    aria-label={tt.sizeLabel}
                                     className="w-full h-2 bg-[var(--color-wine-100)] rounded-full appearance-none cursor-pointer accent-[var(--color-wine-700)]"
                                 />
                             </div>
@@ -207,6 +304,7 @@ export default function WatermarkPage() {
                                     step={0.01}
                                     value={opacity}
                                     onChange={(e) => setOpacity(parseFloat(e.target.value))}
+                                    aria-label={tt.opacityLabel}
                                     className="w-full h-2 bg-[var(--color-wine-100)] rounded-full appearance-none cursor-pointer accent-[var(--color-wine-700)]"
                                 />
                             </div>
@@ -219,6 +317,7 @@ export default function WatermarkPage() {
                                     max={90}
                                     value={rotation}
                                     onChange={(e) => setRotation(parseInt(e.target.value))}
+                                    aria-label={tt.rotationLabel}
                                     className="w-full h-2 bg-[var(--color-wine-100)] rounded-full appearance-none cursor-pointer accent-[var(--color-wine-700)]"
                                 />
                             </div>
@@ -230,8 +329,29 @@ export default function WatermarkPage() {
                                         type="color"
                                         value={color}
                                         onChange={(e) => setColor(e.target.value)}
+                                        aria-label={tt.colorLabel}
                                         className="w-12 h-12 rounded-2xl cursor-pointer border-[1.5px] border-[var(--color-wine-100)] p-1 bg-white"
                                     />
+                                    <div className="flex items-center gap-1.5">
+                                        <button
+                                            onClick={() => setColor('#FFFFFF')}
+                                            aria-label={s.whiteColor}
+                                            title={s.whiteColor}
+                                            className={`w-8 h-8 rounded-full bg-white border-[1.5px] transition-colors ${color.toUpperCase() === '#FFFFFF'
+                                                ? 'border-[var(--color-wine-700)]'
+                                                : 'border-[var(--color-wine-100)] hover:border-[var(--color-wine-400)]'
+                                                }`}
+                                        />
+                                        <button
+                                            onClick={() => setColor('#000000')}
+                                            aria-label={s.blackColor}
+                                            title={s.blackColor}
+                                            className={`w-8 h-8 rounded-full bg-black border-[1.5px] transition-colors ${color.toUpperCase() === '#000000'
+                                                ? 'border-[var(--color-wine-700)]'
+                                                : 'border-[var(--color-wine-100)] hover:border-[var(--color-wine-400)]'
+                                                }`}
+                                        />
+                                    </div>
                                     <span className="text-[12.5px] text-[var(--color-smoke-600)] uppercase font-mono">{color}</span>
                                 </div>
                             </div>

@@ -1,50 +1,171 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import imageCompression from 'browser-image-compression';
 import { motion } from 'framer-motion';
 import { Upload, Download, Settings2, Image as ImageIcon, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, FieldLabel, TextInput, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
 
+const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
 export default function ImageCompressor() {
-    const t = useT();
+    const { locale, t } = useLanguage();
     const tt = t.pages.compressor;
+    const s = useMemo(() => (locale === 'th'
+        ? {
+            unsupported: 'รองรับเฉพาะไฟล์ PNG, JPEG, WEBP',
+            pasteHint: 'หรือกด Ctrl+V เพื่อวางรูปจากคลิปบอร์ด',
+            noSavings: 'ไฟล์เล็กอยู่แล้ว',
+        }
+        : {
+            unsupported: 'Only PNG, JPEG, and WEBP files are supported',
+            pasteHint: 'You can also paste an image (Ctrl+V)',
+            noSavings: 'Already optimized',
+        }), [locale]);
+
     const [originalImage, setOriginalImage] = useState<File | null>(null);
     const [compressedImage, setCompressedImage] = useState<File | null>(null);
     const [isCompressing, setIsCompressing] = useState(false);
-    const [options, setOptions] = useState({
-        maxSizeMB: 1,
-        maxWidthOrHeight: 1920,
-        useWebWorker: true,
-    });
+    const [progress, setProgress] = useState(0);
+    const [isDragging, setIsDragging] = useState(false);
+    const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+    const [maxSizeStr, setMaxSizeStr] = useState('1');
+    const [maxDimStr, setMaxDimStr] = useState('1920');
+
+    // Increments whenever the source image changes or is reset, so a
+    // compression that is still in flight for an old image gets discarded.
+    const jobRef = useRef(0);
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const originalUrl = useMemo(
+        () => (originalImage ? URL.createObjectURL(originalImage) : null),
+        [originalImage]
+    );
+    useEffect(() => () => {
+        if (originalUrl) URL.revokeObjectURL(originalUrl);
+    }, [originalUrl]);
+
+    const compressedUrl = useMemo(
+        () => (compressedImage ? URL.createObjectURL(compressedImage) : null),
+        [compressedImage]
+    );
+    useEffect(() => () => {
+        if (compressedUrl) URL.revokeObjectURL(compressedUrl);
+    }, [compressedUrl]);
+
+    useEffect(() => {
+        if (!originalUrl) {
+            setDims(null);
+            return;
+        }
+        const img = new window.Image();
+        img.onload = () => setDims({ w: img.naturalWidth, h: img.naturalHeight });
+        img.src = originalUrl;
+        return () => { img.onload = null; };
+    }, [originalUrl]);
+
+    const acceptFile = useCallback((file: File) => {
+        if (!SUPPORTED_TYPES.includes(file.type)) {
+            toast.error(file.type.startsWith('image/') ? s.unsupported : t.common.pleaseSelectImage);
+            return;
+        }
+        jobRef.current++;
+        setIsCompressing(false);
+        setOriginalImage(file);
+        setCompressedImage(null);
+    }, [s, t.common.pleaseSelectImage]);
 
     const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        if (!file.type.startsWith('image/')) {
-            toast.error(t.common.pleaseSelectImage);
-            return;
-        }
-        setOriginalImage(file);
-        setCompressedImage(null);
+        acceptFile(file);
     };
 
-    const compress = async () => {
-        if (!originalImage) return;
+    // Drag & drop anywhere on the page (prevents the browser navigating to the file).
+    useEffect(() => {
+        const onDragOver = (e: DragEvent) => e.preventDefault();
+        const onDrop = (e: DragEvent) => {
+            e.preventDefault();
+            const file = e.dataTransfer?.files?.[0];
+            if (file) acceptFile(file);
+        };
+        window.addEventListener('dragover', onDragOver);
+        window.addEventListener('drop', onDrop);
+        return () => {
+            window.removeEventListener('dragover', onDragOver);
+            window.removeEventListener('drop', onDrop);
+        };
+    }, [acceptFile]);
+
+    // Paste an image straight from the clipboard.
+    useEffect(() => {
+        const onPaste = (e: ClipboardEvent) => {
+            const items = e.clipboardData?.items;
+            if (!items) return;
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) {
+                        e.preventDefault();
+                        acceptFile(file);
+                    }
+                    return;
+                }
+            }
+        };
+        window.addEventListener('paste', onPaste);
+        return () => window.removeEventListener('paste', onPaste);
+    }, [acceptFile]);
+
+    const runCompress = useCallback(async (src: File) => {
+        const job = ++jobRef.current;
         setIsCompressing(true);
+        setProgress(0);
         try {
-            const result = await imageCompression(originalImage, options);
+            const result = await imageCompression(src, {
+                maxSizeMB: Math.max(0.1, parseFloat(maxSizeStr) || 1),
+                maxWidthOrHeight: Math.max(1, parseInt(maxDimStr, 10) || 1920),
+                useWebWorker: true,
+                onProgress: (p: number) => {
+                    if (jobRef.current === job) setProgress(p);
+                },
+            });
+            if (jobRef.current !== job) return;
             setCompressedImage(result);
             toast.success(tt.successToast);
         } catch (err) {
+            if (jobRef.current !== job) return;
             console.error(err);
             toast.error(tt.failToast);
         } finally {
-            setIsCompressing(false);
+            if (jobRef.current === job) setIsCompressing(false);
         }
+    }, [maxSizeStr, maxDimStr, tt.successToast, tt.failToast]);
+
+    // Auto-compress on upload and re-compress when settings change (debounced).
+    useEffect(() => {
+        if (!originalImage) return;
+        timerRef.current = setTimeout(() => { void runCompress(originalImage); }, 600);
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+    }, [originalImage, runCompress]);
+
+    const compress = () => {
+        if (!originalImage) return;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        void runCompress(originalImage);
+    };
+
+    const reset = () => {
+        jobRef.current++;
+        setIsCompressing(false);
+        setOriginalImage(null);
+        setCompressedImage(null);
     };
 
     const downloadImage = () => {
@@ -67,6 +188,10 @@ export default function ImageCompressor() {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     };
 
+    const savings = originalImage && compressedImage
+        ? Math.round((1 - compressedImage.size / originalImage.size) * 100)
+        : 0;
+
     return (
         <ToolShell
             icon={<ImageIcon className="w-6 h-6" strokeWidth={2.1} />}
@@ -76,7 +201,7 @@ export default function ImageCompressor() {
             width="xwide"
         >
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                <div className="lg:col-span-4">
+                <div className="lg:col-span-4 order-2 lg:order-1">
                     <ToolCard>
                         <h2 className="text-base font-semibold text-[var(--color-wine-700)] mb-5 inline-flex items-center gap-2">
                             <Settings2 className="w-4 h-4" />
@@ -89,8 +214,8 @@ export default function ImageCompressor() {
                                     type="number"
                                     step="0.1"
                                     min="0.1"
-                                    value={options.maxSizeMB}
-                                    onChange={(e) => setOptions((p) => ({ ...p, maxSizeMB: parseFloat(e.target.value) || 1 }))}
+                                    value={maxSizeStr}
+                                    onChange={(e) => setMaxSizeStr(e.target.value)}
                                 />
                             </div>
                             <div>
@@ -98,8 +223,9 @@ export default function ImageCompressor() {
                                 <TextInput
                                     type="number"
                                     step="100"
-                                    value={options.maxWidthOrHeight}
-                                    onChange={(e) => setOptions((p) => ({ ...p, maxWidthOrHeight: parseInt(e.target.value) || 1920 }))}
+                                    min="1"
+                                    value={maxDimStr}
+                                    onChange={(e) => setMaxDimStr(e.target.value)}
                                 />
                             </div>
 
@@ -107,7 +233,7 @@ export default function ImageCompressor() {
                                 {isCompressing ? (
                                     <>
                                         <Settings2 className="w-4 h-4 animate-spin" />
-                                        {tt.compressing}
+                                        {tt.compressing} {progress > 0 ? `${Math.min(100, Math.round(progress))}%` : ''}
                                     </>
                                 ) : (
                                     <>
@@ -120,18 +246,26 @@ export default function ImageCompressor() {
                     </ToolCard>
                 </div>
 
-                <div className="lg:col-span-8">
+                <div className="lg:col-span-8 order-1 lg:order-2">
                     <ToolCard className="min-h-[460px]">
                         {!originalImage ? (
-                            <div
-                                className="h-full border-2 border-dashed border-[var(--color-wine-200)] rounded-2xl flex flex-col items-center justify-center text-center p-12 cursor-pointer hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)] transition-all"
-                                onClick={() => document.getElementById('image-upload')?.click()}
+                            <label
+                                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                                onDragLeave={(e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+                                }}
+                                onDrop={() => setIsDragging(false)}
+                                className={`h-full border-2 border-dashed rounded-2xl flex flex-col items-center justify-center text-center p-12 cursor-pointer transition-all focus-within:border-[var(--color-wine-400)] focus-within:bg-[var(--color-wine-50)] ${
+                                    isDragging
+                                        ? 'border-[var(--color-wine-400)] bg-[var(--color-wine-50)]'
+                                        : 'border-[var(--color-wine-200)] hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]'
+                                }`}
                             >
                                 <input
                                     id="image-upload"
                                     type="file"
-                                    accept="image/*"
-                                    className="hidden"
+                                    accept="image/jpeg,image/png,image/webp"
+                                    className="sr-only"
                                     onChange={handleUpload}
                                 />
                                 <motion.div
@@ -143,17 +277,22 @@ export default function ImageCompressor() {
                                 </motion.div>
                                 <h3 className="text-lg font-semibold text-[var(--color-wine-700)] mb-1.5">{tt.uploadTitle}</h3>
                                 <p className="text-[var(--color-smoke-600)] text-sm">{tt.uploadHint}</p>
-                            </div>
+                                <p className="text-[var(--color-smoke-600)] text-[12.5px] mt-1">{s.pasteHint}</p>
+                            </label>
                         ) : (
                             <div className="space-y-7">
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-3">
                                         <div className="flex items-center justify-between">
                                             <h3 className="font-semibold text-[var(--color-wine-700)]">{tt.original}</h3>
-                                            <span className="text-[12.5px] text-[var(--color-smoke-600)]">{formatSize(originalImage.size)}</span>
+                                            <span className="text-[12.5px] text-[var(--color-smoke-600)]">
+                                                {dims ? `${dims.w}×${dims.h} · ` : ''}{formatSize(originalImage.size)}
+                                            </span>
                                         </div>
                                         <div className="relative aspect-video bg-[var(--color-wine-50)] rounded-2xl overflow-hidden border border-[var(--color-wine-100)]">
-                                            <Image src={URL.createObjectURL(originalImage)} alt="orig" fill className="object-contain" unoptimized />
+                                            {originalUrl && (
+                                                <Image src={originalUrl} alt="orig" fill className="object-contain" unoptimized />
+                                            )}
                                         </div>
                                     </div>
                                     <div className="space-y-3">
@@ -162,19 +301,29 @@ export default function ImageCompressor() {
                                             {compressedImage && (
                                                 <span className="text-[12.5px] font-semibold text-[#3d6a4a] inline-flex items-center gap-2">
                                                     {formatSize(compressedImage.size)}
-                                                    <span className="text-[11px] bg-[#dbe8d3] text-[#2c4a26] px-2 py-0.5 rounded-full">
-                                                        −{Math.round((1 - compressedImage.size / originalImage.size) * 100)}%
-                                                    </span>
+                                                    {savings > 0 ? (
+                                                        <span className="text-[11px] bg-[#dbe8d3] text-[#2c4a26] px-2 py-0.5 rounded-full">
+                                                            −{savings}%
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[11px] bg-[var(--color-wine-50)] text-[var(--color-smoke-600)] px-2 py-0.5 rounded-full">
+                                                            {s.noSavings}
+                                                        </span>
+                                                    )}
                                                 </span>
                                             )}
                                         </div>
                                         <div className="relative aspect-video bg-[var(--color-wine-50)] rounded-2xl overflow-hidden border border-[var(--color-wine-100)] flex items-center justify-center">
-                                            {compressedImage ? (
-                                                <Image src={URL.createObjectURL(compressedImage)} alt="comp" fill className="object-contain" unoptimized />
+                                            {compressedUrl ? (
+                                                <Image src={compressedUrl} alt="comp" fill className="object-contain" unoptimized />
                                             ) : (
                                                 <div className="text-[var(--color-smoke-600)] text-center">
-                                                    <ImageIcon className="w-10 h-10 mx-auto mb-2 text-[var(--color-wine-300)]" />
-                                                    <p className="text-[12.5px]">{tt.waiting}</p>
+                                                    <ImageIcon className={`w-10 h-10 mx-auto mb-2 text-[var(--color-wine-300)] ${isCompressing ? 'animate-pulse' : ''}`} />
+                                                    <p className="text-[12.5px]">
+                                                        {isCompressing
+                                                            ? `${tt.compressing} ${progress > 0 ? `${Math.min(100, Math.round(progress))}%` : ''}`
+                                                            : tt.waiting}
+                                                    </p>
                                                 </div>
                                             )}
                                         </div>
@@ -183,7 +332,7 @@ export default function ImageCompressor() {
 
                                 <div className="flex gap-3">
                                     <button
-                                        onClick={() => { setOriginalImage(null); setCompressedImage(null); }}
+                                        onClick={reset}
                                         className="flex-1 py-3.5 rounded-2xl bg-[var(--color-wine-50)] border-[1.5px] border-[var(--color-wine-100)] text-[var(--color-wine-700)] font-semibold text-[14px] hover:bg-[var(--color-wine-100)] transition-colors"
                                     >
                                         {t.common.reset}

@@ -3,11 +3,11 @@ import { generateToolSchema, generateBreadcrumbSchema } from '@/lib/structured-d
 
 export const metadata: Metadata = {
     title: 'Unit Converter - Convert CSS Units Online Free',
-    description: 'Free CSS unit converter. Convert between px, rem, em, vh, vw, and more. Perfect for web developers. Instant conversion, no ads.',
+    description: 'Free CSS unit converter. Convert between px, rem, em, and percent. Perfect for web developers. Instant conversion, no ads.',
     keywords: ['unit converter', 'CSS converter', 'px to rem', 'em to px', 'CSS units', 'rem converter', 'developer tool', 'web development'],
     openGraph: {
         title: 'Unit Converter - Free CSS Tool',
-        description: 'Convert between CSS units instantly. px, rem, em, vh, vw, and more.',
+        description: 'Convert between CSS units instantly. px, rem, em, and percent.',
         url: 'https://functions.codes/unit-converter',
     },
     twitter: {

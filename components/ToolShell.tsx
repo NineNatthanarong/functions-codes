@@ -1,10 +1,14 @@
 'use client';
 
-import { ReactNode, useRef } from 'react';
+import { ReactNode, useEffect, useId, useRef } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { motion, useScroll, useTransform } from 'framer-motion';
-import { ArrowLeft } from 'lucide-react';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { ArrowLeft, ArrowUpRight } from 'lucide-react';
+import { useLanguage, useT } from '@/lib/i18n/LanguageProvider';
+import { translations } from '@/lib/i18n/translations';
+import { getRelatedTools } from '@/lib/tools';
+import { recordToolVisit } from '@/lib/useRecentTools';
 
 type ToolShellProps = {
   icon: ReactNode;
@@ -31,6 +35,13 @@ export default function ToolShell({
   icon, title, subtitle, kicker, width = 'wide', children, actions,
 }: ToolShellProps) {
   const t = useT();
+  const pathname = usePathname();
+  const slug = pathname?.replace(/^\//, '') ?? '';
+
+  useEffect(() => {
+    if (slug) recordToolVisit(slug);
+  }, [slug]);
+
   const heroRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: heroRef,
@@ -129,6 +140,46 @@ export default function ToolShell({
         >
           {children}
         </motion.div>
+
+        <RelatedTools slug={slug} />
+      </div>
+    </div>
+  );
+}
+
+function RelatedTools({ slug }: { slug: string }) {
+  const { t, locale } = useLanguage();
+  const related = getRelatedTools(slug, 3);
+  if (related.length === 0) return null;
+
+  return (
+    <div className="mt-20 pt-10 border-t border-[var(--color-line)]">
+      <p className="kicker text-[var(--color-ink-3)] mb-6">{t.common.relatedTools}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {related.map((tool) => {
+          const text = (translations[locale].tools as Record<string, { title?: string; desc?: string }>)[tool.slug] ?? {};
+          const Icon = tool.icon;
+          return (
+            <Link
+              key={tool.slug}
+              href={'/' + tool.slug}
+              className="group flex items-center gap-3.5 p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] hover:border-[var(--color-ink-2)] transition-colors duration-300"
+            >
+              <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-[var(--color-line)] text-[var(--color-ink)] group-hover:bg-[var(--color-accent)] group-hover:border-[var(--color-accent)] group-hover:text-[var(--color-ink-2)] transition-colors duration-300 flex-shrink-0">
+                <Icon className="w-4 h-4" strokeWidth={1.9} />
+              </span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13.5px] font-semibold tracking-[-0.01em] text-[var(--color-ink-2)] truncate">
+                  {text.title ?? tool.slug}
+                </span>
+                {text.desc && (
+                  <span className="block text-[12px] text-[var(--color-ink-3)] truncate">{text.desc}</span>
+                )}
+              </span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-[var(--color-ink-4)] group-hover:text-[var(--color-accent)] transition-colors duration-300 flex-shrink-0" strokeWidth={2.2} />
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
@@ -180,6 +231,7 @@ export function SecondaryButton({
 }) {
   return (
     <motion.button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       whileHover={disabled ? undefined : { scale: 1.015 }}
@@ -207,6 +259,7 @@ export function GhostButton({
       : 'text-[var(--color-ink)] hover:bg-[var(--color-surface-2)]';
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className={`inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[13px] font-medium ${toneCls} disabled:opacity-40 transition-colors duration-200 ${className}`}
@@ -252,6 +305,7 @@ export function SegmentedControl<T extends string>({
   value: T;
   onChange: (v: T) => void;
 }) {
+  const id = useId();
   return (
     <div className="inline-flex p-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-line)]">
       {options.map((opt) => {
@@ -259,12 +313,13 @@ export function SegmentedControl<T extends string>({
         return (
           <button
             key={opt.value}
+            type="button"
             onClick={() => onChange(opt.value)}
             className={`relative px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold tracking-[-0.01em] transition-colors duration-300 ${active ? 'text-white' : 'text-[var(--color-ink)] hover:text-[var(--color-ink-2)]'}`}
           >
             {active && (
               <motion.span
-                layoutId={`seg-${opt.label}-${options.length}`}
+                layoutId={`seg-pill-${id}`}
                 className="absolute inset-0 rounded-full bg-[var(--color-ink-2)] -z-0"
                 transition={{ type: 'spring', stiffness: 420, damping: 30 }}
               />

@@ -6,31 +6,58 @@ import { Upload, Download, Play, Pause, Scissors, Trash2, Music, Mic } from 'luc
 import { toast } from 'sonner';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
+
+const AUDIO_EXTENSIONS = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/i;
 
 export default function AudioEditor() {
     const t = useT();
     const tt = t.pages.audio;
+    const { locale } = useLanguage();
+    const s = locale === 'th' ? {
+        loadError: 'ไม่สามารถโหลดไฟล์เสียงนี้ได้',
+        play: 'เล่น',
+        pause: 'หยุดชั่วคราว',
+        removeFile: 'ลบไฟล์',
+        playSelection: 'เล่นช่วงที่เลือก',
+        selection: 'ช่วงที่เลือก',
+    } : {
+        loadError: 'Could not load this audio file',
+        play: 'Play',
+        pause: 'Pause',
+        removeFile: 'Remove file',
+        playSelection: 'Play selection',
+        selection: 'Selection',
+    };
     const [audioFile, setAudioFile] = useState<File | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [isTrimming, setIsTrimming] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [hasRegion, setHasRegion] = useState(false);
+    const [regionBounds, setRegionBounds] = useState<{ start: number; end: number } | null>(null);
 
     const waveformRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
     const regionsPluginRef = useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
+    const objectUrlRef = useRef<string | null>(null);
+    const loadIdRef = useRef(0);
 
     useEffect(() => {
         if (!waveformRef.current) return;
 
+        const rootStyles = getComputedStyle(document.documentElement);
+        const themeColor = (name: string, fallback: string) =>
+            rootStyles.getPropertyValue(name).trim() || fallback;
+
         const wavesurfer = WaveSurfer.create({
             container: waveformRef.current,
-            waveColor: '#c98a98',
-            progressColor: '#552834',
-            cursorColor: '#3f1d27',
+            waveColor: themeColor('--color-wine-300', '#9ca3af'),
+            progressColor: themeColor('--color-wine-700', '#14213d'),
+            cursorColor: themeColor('--color-wine-800', '#000000'),
             barWidth: 2,
             barGap: 1,
             barRadius: 2,
@@ -48,45 +75,108 @@ export default function AudioEditor() {
         wavesurfer.on('finish', () => setIsPlaying(false));
         wavesurfer.on('timeupdate', (time) => setCurrentTime(time));
 
-        regions.on('region-created', () => setHasRegion(true));
+        regions.on('region-created', (region) => {
+            setHasRegion(true);
+            setRegionBounds({ start: region.start, end: region.end });
+        });
+        regions.on('region-update', (region) => setRegionBounds({ start: region.start, end: region.end }));
+        regions.on('region-updated', (region) => setRegionBounds({ start: region.start, end: region.end }));
         regions.on('region-removed', () => {
-            if (regions.getRegions().length === 0) setHasRegion(false);
+            if (regions.getRegions().length === 0) { setHasRegion(false); setRegionBounds(null); }
         });
 
         wavesurferRef.current = wavesurfer;
-        return () => { wavesurfer.destroy(); };
+        return () => {
+            wavesurfer.destroy();
+            if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
+        };
     }, []);
 
-    const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        if (!file.type.startsWith('audio/')) { toast.error(t.common.pleaseSelectAudio); return; }
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target && (
+                target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' ||
+                target.tagName === 'SELECT' || target.tagName === 'BUTTON' ||
+                target.isContentEditable
+            )) return;
+            if (!audioFile || isLoading) return;
+            if (e.code === 'Space') {
+                e.preventDefault();
+                wavesurferRef.current?.playPause();
+            } else if ((e.key === 'Delete' || e.key === 'Backspace') && regionsPluginRef.current) {
+                if (regionsPluginRef.current.getRegions().length > 0) {
+                    e.preventDefault();
+                    regionsPluginRef.current.clearRegions();
+                }
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [audioFile, isLoading]);
 
+    const loadFile = async (file: File) => {
+        if (!file.type.startsWith('audio/') && !AUDIO_EXTENSIONS.test(file.name)) {
+            toast.error(t.common.pleaseSelectAudio);
+            return;
+        }
+        const wavesurfer = wavesurferRef.current;
+        if (!wavesurfer) return;
+
+        const loadId = ++loadIdRef.current;
         setAudioFile(file);
         setIsLoading(true);
         setHasRegion(false);
+        setRegionBounds(null);
+        setCurrentTime(0);
+        regionsPluginRef.current?.clearRegions();
 
-        if (wavesurferRef.current) {
-            const url = URL.createObjectURL(file);
-            await wavesurferRef.current.load(url);
+        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+        const url = URL.createObjectURL(file);
+        objectUrlRef.current = url;
+
+        try {
+            await wavesurfer.load(url);
+            if (loadIdRef.current !== loadId) return;
             toast.success(tt.loadedToast);
+        } catch (err) {
+            if (loadIdRef.current !== loadId) return;
+            console.error(err);
+            if (objectUrlRef.current === url) { URL.revokeObjectURL(url); objectUrlRef.current = null; }
+            setAudioFile(null);
+            toast.error(s.loadError);
+        } finally {
+            if (loadIdRef.current === loadId) setIsLoading(false);
         }
+    };
+
+    const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (file) loadFile(file);
     };
 
     const togglePlay = () => wavesurferRef.current?.playPause();
 
     const addRegion = () => {
         if (!wavesurferRef.current || !regionsPluginRef.current) return;
-        regionsPluginRef.current.clearRegions();
         const dur = wavesurferRef.current.getDuration();
+        if (!dur) return;
+        regionsPluginRef.current.clearRegions();
+        const span = dur / 3;
+        const start = Math.max(0, Math.min(wavesurferRef.current.getCurrentTime() - span / 2, dur - span));
         regionsPluginRef.current.addRegion({
-            start: dur * 0.33,
-            end: dur * 0.66,
-            color: 'rgba(85, 40, 52, 0.22)',
+            start,
+            end: start + span,
+            color: 'color-mix(in srgb, var(--color-wine-700) 22%, transparent)',
             drag: true,
             resize: true,
         });
         toast.success(tt.addedToast);
+    };
+
+    const playSelection = () => {
+        regionsPluginRef.current?.getRegions()[0]?.play(true);
     };
 
     const trimAudio = async () => {
@@ -97,16 +187,19 @@ export default function AudioEditor() {
         if (regions.length === 0) { toast.error(tt.addFirstToast); return; }
 
         const region = regions[0];
+        setIsTrimming(true);
         toast.info(tt.trimmingToast);
 
+        let ctx: AudioContext | null = null;
         try {
             const buf = await audioFile.arrayBuffer();
-            const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+            ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
             const audioBuffer = await ctx.decodeAudioData(buf);
             const sr = audioBuffer.sampleRate;
-            const startSample = Math.floor(region.start * sr);
-            const endSample = Math.floor(region.end * sr);
+            const startSample = Math.max(0, Math.min(Math.floor(region.start * sr), audioBuffer.length));
+            const endSample = Math.max(startSample, Math.min(Math.floor(region.end * sr), audioBuffer.length));
             const newLength = endSample - startSample;
+            if (newLength <= 0) { toast.error(tt.trimFailToast); return; }
             const trimmed = ctx.createBuffer(audioBuffer.numberOfChannels, newLength, sr);
 
             for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
@@ -120,7 +213,7 @@ export default function AudioEditor() {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = 'trimmed.wav';
+            link.download = `${audioFile.name.replace(/\.[^.]+$/, '')}-trimmed.wav`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -129,6 +222,9 @@ export default function AudioEditor() {
         } catch (err) {
             console.error(err);
             toast.error(tt.trimFailToast);
+        } finally {
+            setIsTrimming(false);
+            if (ctx) ctx.close().catch(() => {});
         }
     };
 
@@ -163,12 +259,16 @@ export default function AudioEditor() {
     };
 
     const clearAudio = () => {
+        loadIdRef.current++;
         setAudioFile(null);
         setHasRegion(false);
+        setRegionBounds(null);
         setCurrentTime(0);
         setDuration(0);
+        setIsLoading(false);
         wavesurferRef.current?.empty();
         regionsPluginRef.current?.clearRegions();
+        if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
     };
 
     const formatTime = (sec: number) => {
@@ -188,8 +288,16 @@ export default function AudioEditor() {
             <ToolCard>
                 {!audioFile && (
                     <div
-                        className="border-2 border-dashed border-[var(--color-wine-200)] rounded-2xl p-12 text-center cursor-pointer hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)] transition-all"
+                        className={`border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)] transition-all ${isDragOver ? 'border-[var(--color-wine-400)] bg-[var(--color-wine-50)]' : 'border-[var(--color-wine-200)]'}`}
                         onClick={() => document.getElementById('audio-upload')?.click()}
+                        onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDragOver(false);
+                            const file = e.dataTransfer.files?.[0];
+                            if (file) loadFile(file);
+                        }}
                     >
                         <input id="audio-upload" type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
                         <motion.div
@@ -219,6 +327,8 @@ export default function AudioEditor() {
                             </div>
                             <button
                                 onClick={clearAudio}
+                                aria-label={s.removeFile}
+                                title={s.removeFile}
                                 className="p-2 text-[#a4364c] hover:bg-[#fbe3e7] rounded-xl transition-colors"
                             >
                                 <Trash2 className="w-4 h-4" />
@@ -244,18 +354,35 @@ export default function AudioEditor() {
                                 whileHover={{ scale: 1.04 }}
                                 onClick={togglePlay}
                                 disabled={isLoading}
+                                aria-label={isPlaying ? s.pause : s.play}
                                 className="w-16 h-16 bg-[var(--color-wine-700)] text-[var(--color-cream)] rounded-full hover:bg-[var(--color-wine-600)] disabled:opacity-50 transition-colors flex items-center justify-center shadow-lift"
                             >
                                 {isPlaying ? <Pause className="w-6 h-6" /> : <Play className="w-6 h-6 ml-1" />}
                             </motion.button>
                         </div>
 
+                        {regionBounds && (
+                            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+                                <span className="font-mono text-[12.5px] text-[var(--color-smoke-600)]">
+                                    {s.selection}: {formatTime(regionBounds.start)} – {formatTime(regionBounds.end)}
+                                </span>
+                                <button
+                                    onClick={playSelection}
+                                    disabled={isLoading}
+                                    className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[var(--color-wine-700)] hover:underline disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    <Play className="w-3.5 h-3.5" />
+                                    {s.playSelection}
+                                </button>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <SecondaryButton onClick={addRegion} disabled={isLoading} className="py-3">
                                 <Scissors className="w-4 h-4" />
                                 {tt.addRegion}
                             </SecondaryButton>
-                            <PrimaryButton onClick={trimAudio} disabled={isLoading || !hasRegion} className="py-3">
+                            <PrimaryButton onClick={trimAudio} disabled={isLoading || !hasRegion || isTrimming} className="py-3">
                                 <Download className="w-4 h-4" />
                                 {tt.trimDownload}
                             </PrimaryButton>

@@ -4,99 +4,42 @@ import { useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from 'framer-motion';
 import {
-  Search, FileText, Image as ImageIcon, Scissors, QrCode, Lock, Palette, Braces,
-  Type, ArrowRightLeft, Minimize2, ArrowUpRight, Mic, Edit, ShieldCheck, WifiOff,
-  HeartHandshake, Crop, Pipette, Stamp, Shuffle, Disc3, Languages, X,
+  Search, ArrowUpRight, ShieldCheck, WifiOff, HeartHandshake, X, Clock3,
 } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { translations } from '@/lib/i18n/translations';
+import { TOOLS, getTool, type ToolKey, type ToolDef } from '@/lib/tools';
+import { useRecentTools } from '@/lib/useRecentTools';
 import { cn } from '@/lib/utils';
-
-type ToolKey =
-  | 'file-converter' | 'bgrm' | 'image-compressor' | 'qr-generator'
-  | 'json-formatter' | 'password-generator' | 'color-palette' | 'lorem-ipsum'
-  | 'diff-viewer' | 'unit-converter' | 'pdf-tools' | 'audio-editor' | 'markdown-editor'
-  | 'exif-stripper' | 'image-cropper' | 'color-picker' | 'color-tools'
-  | 'watermark' | 'random-picker' | 'spin-wheel' | 'thai-keyboard';
 
 type Category = 'all' | 'file' | 'image' | 'dev' | 'write' | 'audio' | 'fun';
 
 const EASE = [0.25, 1, 0.5, 1] as const;
 
-const toolIcons: Record<ToolKey, React.ReactNode> = {
-  'file-converter': <FileText className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'bgrm': <Scissors className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'image-compressor': <ImageIcon className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'qr-generator': <QrCode className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'json-formatter': <Braces className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'password-generator': <Lock className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'color-palette': <Palette className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'lorem-ipsum': <Type className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'diff-viewer': <ArrowRightLeft className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'unit-converter': <Minimize2 className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'pdf-tools': <FileText className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'audio-editor': <Mic className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'markdown-editor': <Edit className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'exif-stripper': <ShieldCheck className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'image-cropper': <Crop className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'color-picker': <Pipette className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'color-tools': <Palette className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'watermark': <Stamp className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'random-picker': <Shuffle className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'spin-wheel': <Disc3 className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-  'thai-keyboard': <Languages className="w-[18px] h-[18px]" strokeWidth={1.8} />,
-};
+type CardText = { title: string; desc: string };
 
-const orderedKeys: ToolKey[] = [
-  'file-converter', 'bgrm', 'image-cropper', 'image-compressor',
-  'exif-stripper', 'watermark', 'color-picker', 'color-tools',
-  'color-palette', 'qr-generator', 'json-formatter', 'password-generator',
-  'pdf-tools', 'markdown-editor', 'thai-keyboard', 'diff-viewer',
-  'unit-converter', 'audio-editor', 'lorem-ipsum', 'random-picker', 'spin-wheel',
-];
-
-const aliases: Record<ToolKey, string[]> = {
-  'file-converter': ['convert', 'converter', 'pdf', 'png', 'jpg', 'jpeg', 'webp', 'heic', 'document', 'แปลง', 'แปลงไฟล์', 'แปลงรูป', 'แปลงเอกสาร', 'เอกสาร', 'ไฟล์', 'รูป', 'พีดีเอฟ'],
-  'bgrm': ['background', 'remover', 'remove bg', 'transparent', 'cutout', 'ลบ', 'ลบพื้นหลัง', 'ตัดพื้นหลัง', 'พื้นหลัง', 'พื้นหลังโปร่ง', 'โปร่งใส'],
-  'image-compressor': ['compress', 'compressor', 'shrink', 'smaller', 'reduce', 'optimize', 'บีบ', 'บีบอัด', 'ย่อ', 'ย่อรูป', 'ลดขนาด', 'ลดขนาดรูป', 'ลดน้ำหนัก'],
-  'qr-generator': ['qr', 'qrcode', 'qr code', 'barcode', 'generate qr', 'คิวอาร์', 'คิวอาร์โค้ด', 'สร้างคิวอาร์', 'สร้างqr', 'qrโค้ด'],
-  'json-formatter': ['json', 'pretty', 'minify', 'beautify', 'validate', 'format', 'จัดรูปแบบ', 'จัดเจสัน', 'จัดjson', 'jsonสวย', 'เจสัน'],
-  'password-generator': ['password', 'pass', 'pwd', 'random password', 'secure', 'รหัส', 'รหัสผ่าน', 'พาส', 'พาสเวิร์ด', 'สร้างรหัส', 'รหัสปลอดภัย'],
-  'color-palette': ['palette', 'theme', 'colors', 'extract', 'พาเลตต์', 'พาเลท', 'สี', 'สีจากรูป', 'ดึงสี', 'สกัดสี'],
-  'lorem-ipsum': ['lorem', 'ipsum', 'placeholder', 'dummy', 'dummy text', 'fake', 'ตัวอย่าง', 'ข้อความตัวอย่าง', 'lorem ipsum', 'ข้อความหลอก'],
-  'diff-viewer': ['diff', 'compare', 'changes', 'เปรียบเทียบ', 'เทียบ', 'ความต่าง', 'หาต่าง', 'เทียบข้อความ'],
-  'unit-converter': ['css', 'unit', 'px', 'rem', 'em', 'percent', '%', 'แปลงหน่วย', 'หน่วย', 'หน่วยซีเอสเอส', 'พิกเซล'],
-  'pdf-tools': ['pdf', 'merge', 'split', 'compress pdf', 'combine', 'พีดีเอฟ', 'รวม', 'รวมpdf', 'รวมไฟล์', 'แยก', 'แยกหน้า', 'บีบpdf', 'รวมเอกสาร'],
-  'audio-editor': ['audio', 'mp3', 'wav', 'sound', 'trim', 'cut audio', 'เสียง', 'ตัดเสียง', 'ตัดต่อเสียง', 'ไฟล์เสียง', 'เพลง', 'คลื่นเสียง', 'wave'],
-  'markdown-editor': ['markdown', 'md', 'note', 'editor', 'docs', 'มาร์กดาวน์', 'เขียนโน้ต', 'เขียนเอกสาร', 'มาร์คดาวน์'],
-  'exif-stripper': ['exif', 'metadata', 'gps', 'privacy', 'strip', 'clean', 'ลบเมตา', 'เมตา', 'เมตาดาต้า', 'ลบจีพีเอส', 'จีพีเอส', 'ข้อมูลแฝง', 'ข้อมูลไฟล์', 'ความเป็นส่วนตัว'],
-  'image-cropper': ['crop', 'cropper', 'resize', 'rotate', 'flip', 'trim image', 'ครอบรูป', 'ครอบ', 'ตัดรูป', 'ปรับขนาด', 'ปรับขนาดรูป', 'หมุน', 'หมุนรูป', 'พลิก'],
-  'color-picker': ['picker', 'pick color', 'eyedropper', 'dropper', 'color from screen', 'หยดสี', 'เลือกสี', 'อายดรอปเปอร์', 'ดูดสี', 'ดูดเฉดสี'],
-  'color-tools': ['color converter', 'gradient', 'hex', 'rgb', 'hsl', 'oklch', 'css gradient', 'แปลงสี', 'ไล่สี', 'ไล่ระดับ', 'ไล่ระดับสี', 'เกรเดียนต์', 'เฮ็กซ์', 'อาร์จีบี'],
-  'watermark': ['watermark', 'stamp', 'logo', 'overlay', 'sign image', 'ลายน้ำ', 'ติดลายน้ำ', 'ใส่ลายน้ำ', 'โลโก้', 'แสตมป์'],
-  'random-picker': ['random', 'pick', 'lottery', 'name picker', 'shuffle', 'draw', 'สุ่ม', 'สุ่มชื่อ', 'สุ่มรายการ', 'จับฉลาก', 'จับสลาก', 'แรนดอม'],
-  'spin-wheel': ['wheel', 'spin', 'lucky draw', 'roulette', 'fortune wheel', 'วงล้อ', 'หมุนวงล้อ', 'หมุน', 'ล้อสุ่ม', 'จับฉลาก', 'จับสลาก'],
-  'thai-keyboard': ['kedmanee', 'layout', 'keyboard', 'mistype', 'wrong layout', 'thai keyboard', 'แป้นพิมพ์', 'แป้น', 'คีย์บอร์ด', 'พิมพ์ผิด', 'พิมพ์ภาษาผิด', 'แก้ภาษา', 'พิมพ์ไทย', 'l;ylfu', 'สวัสดี', 'เกษมณี'],
-};
+function toolText(locale: 'th' | 'en', slug: string): CardText {
+  return (translations[locale].tools as Record<string, CardText>)[slug] ?? { title: slug, desc: '' };
+}
 
 function normalize(s: string): string {
   return s.normalize('NFC').toLowerCase();
 }
 
 function buildSearchEntries() {
-  return orderedKeys.map((key) => {
-    const th = translations.th.tools[key];
-    const en = translations.en.tools[key];
+  return TOOLS.map((tool) => {
+    const th = toolText('th', tool.slug);
+    const en = toolText('en', tool.slug);
     const haystack = normalize(
       [
-        key,
-        key.replace(/-/g, ' '),
+        tool.slug,
+        tool.slug.replace(/-/g, ' '),
         th.title, th.desc,
         en.title, en.desc,
-        ...(aliases[key] ?? []),
+        ...tool.aliases,
       ].join(' ')
     );
-    return { key, haystack };
+    return { key: tool.slug as ToolKey, haystack };
   });
 }
 
@@ -142,15 +85,21 @@ export default function Home() {
 
     const matchedKeys = new Set<ToolKey>(
       tokens.length === 0
-        ? orderedKeys
-        : SEARCH_ENTRIES.filter((e) => tokens.every((tok) => e.haystack.includes(tok))).map((e) => e.key as ToolKey)
+        ? TOOLS.map((tool) => tool.slug as ToolKey)
+        : SEARCH_ENTRIES.filter((e) => tokens.every((tok) => e.haystack.includes(tok))).map((e) => e.key)
     );
 
-    return orderedKeys
-      .filter((key) => matchedKeys.has(key))
-      .map((key) => ({ key, ...t.tools[key], href: '/' + key }))
+    return TOOLS
+      .filter((tool) => matchedKeys.has(tool.slug as ToolKey))
+      .map((tool) => ({
+        key: tool.slug as ToolKey,
+        def: tool as ToolDef,
+        ...toolText(locale, tool.slug),
+        category: tool.category as string,
+        href: '/' + tool.slug,
+      }))
       .filter((tool) => category === 'all' || tool.category === category);
-  }, [searchQuery, category, t]);
+  }, [searchQuery, category, locale]);
 
   const categories: { key: Category; label: string }[] = [
     { key: 'all', label: t.home.categoryAll },
@@ -159,7 +108,7 @@ export default function Home() {
     { key: 'dev', label: t.home.categoryDev },
     { key: 'write', label: t.home.categoryWrite },
     { key: 'audio', label: t.home.categoryAudio },
-    { key: 'fun', label: locale === 'th' ? 'สนุก' : 'Fun' },
+    { key: 'fun', label: t.home.categoryFun },
   ];
 
   return (
@@ -260,7 +209,7 @@ function ToolsSection({
 }: {
   t: ReturnType<typeof useLanguage>['t'];
   locale: 'th' | 'en';
-  tools: { key: ToolKey; href: string; title: string; desc: string }[];
+  tools: { key: ToolKey; def: ToolDef; href: string; title: string; desc: string }[];
   searchQuery: string;
   setSearchQuery: (s: string) => void;
   category: Category;
@@ -297,6 +246,8 @@ function ToolsSection({
           <SearchBox value={searchQuery} onChange={setSearchQuery} placeholder={t.home.searchPlaceholder} />
         </motion.div>
 
+        <RecentRow t={t} locale={locale} />
+
         <CategoryTabs categories={categories} active={category} onChange={setCategory} />
 
         <motion.div
@@ -306,17 +257,22 @@ function ToolsSection({
           animate="show"
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px mt-10 bg-[var(--color-line)] rounded-3xl overflow-hidden border border-[var(--color-line)] shadow-soft"
         >
-          {tools.map((tool, idx) => (
-            <ToolCard
-              key={tool.key}
-              index={idx}
-              href={tool.href}
-              title={tool.title}
-              desc={tool.desc}
-              icon={toolIcons[tool.key]}
-              tryLabel={t.common.tryNow}
-            />
-          ))}
+          {tools.map((tool, idx) => {
+            const Icon = tool.def.icon;
+            return (
+              <ToolCard
+                key={tool.key}
+                index={idx}
+                href={tool.href}
+                title={tool.title}
+                desc={tool.desc}
+                icon={<Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />}
+                isNew={Boolean((tool.def as { isNew?: boolean }).isNew)}
+                newLabel={t.common.newBadge}
+                tryLabel={t.common.tryNow}
+              />
+            );
+          })}
         </motion.div>
 
         {tools.length === 0 && (
@@ -601,6 +557,43 @@ function SearchBox({ value, onChange, placeholder }: { value: string; onChange: 
   );
 }
 
+function RecentRow({ t, locale }: { t: ReturnType<typeof useLanguage>['t']; locale: 'th' | 'en' }) {
+  const recents = useRecentTools();
+  const tools = recents
+    .map((slug) => getTool(slug))
+    .filter((x): x is ToolDef => Boolean(x))
+    .slice(0, 5);
+
+  if (tools.length === 0) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: EASE }}
+      className="mb-8 flex flex-wrap items-center gap-2"
+    >
+      <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold tracking-[0.1em] uppercase text-[var(--color-ink-4)] mr-1">
+        <Clock3 className="w-3.5 h-3.5" strokeWidth={2.2} />
+        {t.common.recentTools}
+      </span>
+      {tools.map((tool) => {
+        const Icon = tool.icon;
+        return (
+          <Link
+            key={tool.slug}
+            href={'/' + tool.slug}
+            className="inline-flex items-center gap-2 pl-2.5 pr-3.5 py-1.5 rounded-full bg-white border border-[var(--color-line)] text-[12.5px] font-medium text-[var(--color-ink)] hover:border-[var(--color-ink-2)] hover:text-[var(--color-ink-2)] transition-all duration-300"
+          >
+            <Icon className="w-3.5 h-3.5 text-[var(--color-ink-3)]" strokeWidth={2} />
+            {toolText(locale, tool.slug).title}
+          </Link>
+        );
+      })}
+    </motion.div>
+  );
+}
+
 function CategoryTabs({
   categories, active, onChange,
 }: {
@@ -640,7 +633,7 @@ function CategoryTabs({
 }
 
 function ToolCard({
-  index, href, title, desc, icon, tryLabel,
+  index, href, title, desc, icon, tryLabel, isNew, newLabel,
 }: {
   index: number;
   href: string;
@@ -648,6 +641,8 @@ function ToolCard({
   desc: string;
   icon: React.ReactNode;
   tryLabel: string;
+  isNew?: boolean;
+  newLabel?: string;
 }) {
   return (
     <motion.div
@@ -662,8 +657,15 @@ function ToolCard({
           <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--color-surface-2)] text-[var(--color-ink)] border border-[var(--color-line)] group-hover:bg-[var(--color-accent)] group-hover:text-[var(--color-ink-2)] group-hover:border-[var(--color-accent)] transition-all duration-500">
             {icon}
           </span>
-          <span className="font-mono text-[10.5px] tracking-[0.18em] text-[var(--color-ink-4)] group-hover:text-[var(--color-accent)] mt-2 transition-colors duration-500">
-            {String(index + 1).padStart(2, '0')}
+          <span className="flex items-center gap-2 mt-2">
+            {isNew && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] text-[10px] font-bold tracking-[0.08em] uppercase">
+                {newLabel}
+              </span>
+            )}
+            <span className="font-mono text-[10.5px] tracking-[0.18em] text-[var(--color-ink-4)] group-hover:text-[var(--color-accent)] transition-colors duration-500">
+              {String(index + 1).padStart(2, '0')}
+            </span>
           </span>
         </div>
 

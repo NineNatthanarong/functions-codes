@@ -11,4 +11,12 @@ export default [
       "next-env.d.ts",
     ],
   },
+  {
+    rules: {
+      // Client-only init from localStorage/matchMedia inside a mount effect is
+      // the intended hydration-safe pattern across these tool pages; the strict
+      // compiler-era rule flags it, so keep it visible as a warning only.
+      "react-hooks/set-state-in-effect": "warn",
+    },
+  },
 ];

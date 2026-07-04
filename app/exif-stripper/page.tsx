@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Download, ShieldAlert, ShieldCheck, FileImage, RefreshCw, MapPin, Camera, CalendarDays, AppWindow, Ruler } from 'lucide-react';
+import { Upload, Download, ShieldAlert, ShieldCheck, FileImage, RefreshCw, MapPin, Camera, CalendarDays, AppWindow, Ruler, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
 
 type Found = {
@@ -17,9 +17,13 @@ type Found = {
     dimensions?: string;
 };
 
+type InspectStatus = 'pending' | 'inspected' | 'uninspectable' | 'failed';
+
 // Lightweight EXIF parser — reads JPEG APP1 / Exif segment for the fields we display.
 // Doesn't import a library; keeps bundle small and the tool fully offline.
-async function inspectImage(file: File): Promise<Found> {
+// `inspected: false` means the format couldn't be verified (PNG eXIf, WebP/HEIC EXIF,
+// XMP-only metadata) — the UI must not claim the file is clean in that case.
+async function inspectImage(file: File): Promise<{ meta: Found; inspected: boolean }> {
     const found: Found = {
         size: formatBytes(file.size),
     };
@@ -27,38 +31,37 @@ async function inspectImage(file: File): Promise<Found> {
     const view = new DataView(buf);
 
     // Dimensions via Image element (works for any browser-supported format)
+    const url = URL.createObjectURL(file);
     try {
-        const url = URL.createObjectURL(file);
         const img = await loadImage(url);
         found.dimensions = `${img.naturalWidth} × ${img.naturalHeight}`;
+    } catch { /* ignore */ } finally {
         URL.revokeObjectURL(url);
-    } catch { /* ignore */ }
+    }
 
-    if (view.byteLength < 4) return found;
+    if (view.byteLength < 4) return { meta: found, inspected: false };
 
-    // JPEG starts with 0xFFD8
-    if (view.getUint16(0) !== 0xffd8) return found;
+    // JPEG starts with 0xFFD8 — only JPEG APP1/Exif can be inspected here
+    if (view.getUint16(0) !== 0xffd8) return { meta: found, inspected: false };
 
     let offset = 2;
-    while (offset < view.byteLength) {
+    while (offset + 4 <= view.byteLength) {
         const marker = view.getUint16(offset);
-        if (marker === 0xffe1) {
-            const segLen = view.getUint16(offset + 2);
+        if (marker === 0xffd9 || marker === 0xffda) break;
+        if ((marker & 0xff00) !== 0xff00) break;
+        const segLen = view.getUint16(offset + 2);
+        if (segLen < 2) break;
+        if (marker === 0xffe1 && offset + 8 <= view.byteLength) {
             const exifIdent = readString(view, offset + 4, 4);
             if (exifIdent === 'Exif') {
-                parseExif(view, offset + 10, segLen - 8, found);
+                try {
+                    parseExif(view, offset + 10, segLen - 8, found);
+                } catch { /* truncated EXIF — keep whatever was parsed */ }
             }
-            offset += 2 + segLen;
-        } else if ((marker & 0xff00) !== 0xff00) {
-            break;
-        } else if (marker === 0xffd9 || marker === 0xffda) {
-            break;
-        } else {
-            const segLen = view.getUint16(offset + 2);
-            offset += 2 + segLen;
         }
+        offset += 2 + segLen;
     }
-    return found;
+    return { meta: found, inspected: true };
 }
 
 function readString(v: DataView, o: number, n: number) {
@@ -137,43 +140,137 @@ function parseExif(view: DataView, tiffStart: number, len: number, found: Found)
     // DateTime
     found.date = tags[0x9003] || tags[0x0132];
 
-    // GPS — just flag "present" with hint, we don't decode rationals here
+    // GPS — decode lat/lon so the user sees exactly what location is embedded
     if (gpsIfd) {
         found.gps = '✓';
+        try {
+            const readRationals = (entry: number): number[] | null => {
+                if (get16(entry + 2) !== 5) return null; // unsigned rational
+                const cnt = get32(entry + 4);
+                if (cnt < 1 || cnt > 3) return null;
+                const dataOffset = tiffStart + get32(entry + 8);
+                if (dataOffset + cnt * 8 > view.byteLength) return null;
+                const out: number[] = [];
+                for (let i = 0; i < cnt; i++) {
+                    const den = get32(dataOffset + i * 8 + 4);
+                    out.push(den ? get32(dataOffset + i * 8) / den : 0);
+                }
+                return out;
+            };
+            if (gpsIfd + 2 <= view.byteLength) {
+                const count = get16(gpsIfd);
+                let latRef = '';
+                let lonRef = '';
+                let lat: number[] | null = null;
+                let lon: number[] | null = null;
+                for (let i = 0; i < count; i++) {
+                    const entry = gpsIfd + 2 + i * 12;
+                    if (entry + 12 > view.byteLength) break;
+                    const tag = get16(entry);
+                    if (tag === 1) latRef = String.fromCharCode(view.getUint8(entry + 8));
+                    else if (tag === 3) lonRef = String.fromCharCode(view.getUint8(entry + 8));
+                    else if (tag === 2) lat = readRationals(entry);
+                    else if (tag === 4) lon = readRationals(entry);
+                }
+                if (lat && lon) {
+                    const toDeg = (v: number[]) => v[0] + (v[1] ?? 0) / 60 + (v[2] ?? 0) / 3600;
+                    const latD = (latRef === 'S' ? -1 : 1) * toDeg(lat);
+                    const lonD = (lonRef === 'W' ? -1 : 1) * toDeg(lon);
+                    if (Number.isFinite(latD) && Number.isFinite(lonD)) {
+                        found.gps = `${latD.toFixed(5)}, ${lonD.toFixed(5)}`;
+                    }
+                }
+            }
+        } catch { /* keep the ✓ flag */ }
     }
 }
 
 export default function ExifStripperPage() {
-    const t = useT();
+    const { locale, t } = useLanguage();
     const tt = t.pages.exif;
+    const s = locale === 'th' ? {
+        inspecting: 'กำลังตรวจสอบ...',
+        cantInspect: 'ตรวจสอบฟอร์แมตนี้ไม่ได้ — ลบข้อมูลไว้ก่อนเพื่อความปลอดภัย',
+        inspectFailed: 'ตรวจสอบไฟล์ไม่สำเร็จ — ลบข้อมูลไว้ก่อนเพื่อความปลอดภัย',
+        resetAria: 'เริ่มใหม่',
+        previewAlt: 'ตัวอย่างรูปที่อัปโหลด',
+        pasteHint: 'หรือวางรูปจากคลิปบอร์ด (Ctrl+V)',
+        newSize: 'ขนาดใหม่',
+    } : {
+        inspecting: 'Inspecting...',
+        cantInspect: 'Cannot verify this format — strip anyway to be safe.',
+        inspectFailed: 'Could not inspect this file — strip anyway to be safe.',
+        resetAria: 'Start over',
+        previewAlt: 'Uploaded image preview',
+        pasteHint: 'or paste an image (Ctrl+V)',
+        newSize: 'New size',
+    };
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [file, setFile] = useState<File | null>(null);
     const [found, setFound] = useState<Found | null>(null);
+    const [inspectStatus, setInspectStatus] = useState<InspectStatus>('pending');
     const [stripping, setStripping] = useState(false);
+    const [dragActive, setDragActive] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const inspectTokenRef = useRef(0);
 
     const onUpload = async (f: File) => {
         if (!f.type.startsWith('image/')) {
             toast.error(t.common.pleaseSelectImage);
             return;
         }
-        const url = URL.createObjectURL(f);
-        setImageUrl(url);
+        const token = ++inspectTokenRef.current;
+        if (imageUrl) URL.revokeObjectURL(imageUrl);
+        setImageUrl(URL.createObjectURL(f));
         setFile(f);
+        setFound({ size: formatBytes(f.size) });
+        setInspectStatus('pending');
         try {
-            const meta = await inspectImage(f);
+            const { meta, inspected } = await inspectImage(f);
+            if (inspectTokenRef.current !== token) return; // a newer upload or reset won
             setFound(meta);
+            setInspectStatus(inspected ? 'inspected' : 'uninspectable');
         } catch (err) {
             console.error(err);
+            if (inspectTokenRef.current !== token) return;
+            setInspectStatus('failed');
         }
     };
 
     const reset = () => {
+        inspectTokenRef.current++; // cancel any in-flight inspection
         if (imageUrl) URL.revokeObjectURL(imageUrl);
         setImageUrl(null);
         setFile(null);
         setFound(null);
+        setInspectStatus('pending');
     };
+
+    const onUploadRef = useRef(onUpload);
+    const resetRef = useRef(reset);
+    useEffect(() => {
+        onUploadRef.current = onUpload;
+        resetRef.current = reset;
+    });
+
+    useEffect(() => {
+        const onPaste = (e: ClipboardEvent) => {
+            const f = Array.from(e.clipboardData?.files ?? []).find((x) => x.type.startsWith('image/'));
+            if (f) {
+                e.preventDefault();
+                onUploadRef.current(f);
+            }
+        };
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') resetRef.current();
+        };
+        window.addEventListener('paste', onPaste);
+        window.addEventListener('keydown', onKey);
+        return () => {
+            window.removeEventListener('paste', onPaste);
+            window.removeEventListener('keydown', onKey);
+        };
+    }, []);
 
     const strip = async () => {
         if (!file || !imageUrl) return;
@@ -187,19 +284,24 @@ export default function ExifStripperPage() {
             if (!ctx) throw new Error('canvas');
             ctx.drawImage(img, 0, 0);
 
-            // Re-encode through canvas — strips ALL metadata
-            const isPng = file.type.includes('png');
-            const mime = isPng ? 'image/png' : 'image/jpeg';
+            // Re-encode through canvas — strips ALL metadata.
+            // Alpha-capable sources (PNG/WebP/GIF/…) go out as PNG so transparency isn't flattened.
+            const keepAlpha = /png|webp|gif|avif|svg/i.test(file.type);
+            const mime = keepAlpha ? 'image/png' : 'image/jpeg';
             canvas.toBlob((blob) => {
-                if (!blob) { setStripping(false); return; }
+                if (!blob) {
+                    toast.error(tt.failToast);
+                    setStripping(false);
+                    return;
+                }
                 const link = document.createElement('a');
-                link.download = `cleaned_${file.name.replace(/\.[^.]+$/, '')}.${isPng ? 'png' : 'jpg'}`;
+                link.download = `cleaned_${file.name.replace(/\.[^.]+$/, '')}.${keepAlpha ? 'png' : 'jpg'}`;
                 link.href = URL.createObjectURL(blob);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
                 URL.revokeObjectURL(link.href);
-                toast.success(tt.successToast);
+                toast.success(tt.successToast, { description: `${s.newSize}: ${formatBytes(blob.size)}` });
                 setStripping(false);
             }, mime, 0.95);
         } catch (err) {
@@ -229,15 +331,39 @@ export default function ExifStripperPage() {
                         className="max-w-xl mx-auto"
                     >
                         <div
-                            className="cursor-pointer rounded-3xl border-2 border-dashed border-[var(--color-wine-200)] bg-white hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50 transition-all p-12 text-center group"
+                            role="button"
+                            tabIndex={0}
+                            aria-label={tt.uploadTitle}
+                            className={`cursor-pointer rounded-3xl border-2 border-dashed bg-white transition-all p-12 text-center group ${dragActive
+                                ? 'border-[var(--color-wine-600)] bg-[var(--color-wine-50)]/50'
+                                : 'border-[var(--color-wine-200)] hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50'
+                                }`}
                             onClick={() => fileInputRef.current?.click()}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    fileInputRef.current?.click();
+                                }
+                            }}
+                            onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+                            onDragLeave={() => setDragActive(false)}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                setDragActive(false);
+                                const f = e.dataTransfer.files?.[0];
+                                if (f) onUpload(f);
+                            }}
                         >
                             <input
                                 ref={fileInputRef}
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
-                                onChange={(e) => e.target.files?.[0] && onUpload(e.target.files[0])}
+                                onChange={(e) => {
+                                    const f = e.target.files?.[0];
+                                    if (f) onUpload(f);
+                                    e.target.value = '';
+                                }}
                             />
                             <motion.div
                                 animate={{ y: [0, -4, 0] }}
@@ -248,6 +374,7 @@ export default function ExifStripperPage() {
                             </motion.div>
                             <h3 className="text-lg font-semibold text-[var(--color-wine-700)] mb-1.5">{tt.uploadTitle}</h3>
                             <p className="text-[var(--color-smoke-600)] text-sm">{tt.uploadHint}</p>
+                            <p className="text-[var(--color-smoke-600)]/70 text-xs mt-1">{s.pasteHint}</p>
                         </div>
                     </motion.div>
                 ) : (
@@ -263,22 +390,40 @@ export default function ExifStripperPage() {
                                     <FileImage className="w-3.5 h-3.5" />
                                     {file?.name}
                                 </span>
-                                <button onClick={reset} className="p-1.5 rounded-lg text-[var(--color-smoke-600)] hover:text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)]">
+                                <button onClick={reset} aria-label={s.resetAria} title={s.resetAria} className="p-1.5 rounded-lg text-[var(--color-smoke-600)] hover:text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)]">
                                     <RefreshCw className="w-3.5 h-3.5" />
                                 </button>
                             </div>
                             <div className="relative aspect-square rounded-2xl overflow-hidden bg-[var(--color-wine-50)] border border-[var(--color-wine-100)]">
-                                <Image src={imageUrl} alt="preview" fill className="object-contain p-3" unoptimized />
+                                <Image src={imageUrl} alt={s.previewAlt} fill className="object-contain p-3" unoptimized />
                             </div>
                         </ToolCard>
 
                         <ToolCard>
                             <div className={`mb-5 inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-[12.5px] font-semibold ${sensitive
                                 ? 'bg-[#fbe3e7] border-[#e6b3bd] text-[#a4364c]'
-                                : 'bg-[#dbe8d3] border-[#aac39e] text-[#3d6a4a]'
+                                : inspectStatus === 'pending'
+                                    ? 'bg-[var(--color-wine-50)] border-[var(--color-wine-100)] text-[var(--color-smoke-600)]'
+                                    : inspectStatus === 'inspected'
+                                        ? 'bg-[#dbe8d3] border-[#aac39e] text-[#3d6a4a]'
+                                        : 'bg-[#faf0dc] border-[#e3cd9e] text-[#8a6420]'
                                 }`}>
-                                {sensitive ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                                {sensitive ? tt.warningTitle : tt.noMetadata}
+                                {sensitive
+                                    ? <ShieldAlert className="w-3.5 h-3.5" />
+                                    : inspectStatus === 'pending'
+                                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        : inspectStatus === 'inspected'
+                                            ? <ShieldCheck className="w-3.5 h-3.5" />
+                                            : <ShieldAlert className="w-3.5 h-3.5" />}
+                                {sensitive
+                                    ? tt.warningTitle
+                                    : inspectStatus === 'pending'
+                                        ? s.inspecting
+                                        : inspectStatus === 'inspected'
+                                            ? tt.noMetadata
+                                            : inspectStatus === 'failed'
+                                                ? s.inspectFailed
+                                                : s.cantInspect}
                             </div>
 
                             <h3 className="text-base font-semibold text-[var(--color-wine-700)] mb-3">{tt.metadataTitle}</h3>

@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { Menu, X, Languages, Home } from 'lucide-react';
+import { Menu, X, Languages, Home, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
+import { openCommandPalette } from '@/components/CommandPalette';
 
 export default function Navbar() {
     const pathname = usePathname();
@@ -20,6 +21,11 @@ export default function Navbar() {
         window.addEventListener('scroll', onScroll, { passive: true });
         return () => window.removeEventListener('scroll', onScroll);
     }, []);
+
+    // close the mobile menu on any route change
+    useEffect(() => {
+        setOpen(false);
+    }, [pathname]);
 
     const links = [
         { href: '/file-converter', label: t.nav.fileConverter },
@@ -83,6 +89,20 @@ export default function Navbar() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={openCommandPalette}
+                            aria-label={t.common.searchTools}
+                            title={t.common.searchTools}
+                            className="inline-flex items-center gap-2 h-9 px-3 rounded-full border border-[var(--color-line)] bg-white text-[var(--color-ink-3)] hover:border-[var(--color-accent)] hover:text-[var(--color-ink-2)] transition-all duration-300"
+                        >
+                            <Search className="w-3.5 h-3.5" strokeWidth={2.2} />
+                            <span className="hidden sm:inline text-[12px] font-medium tracking-[-0.01em]">
+                                {t.common.search}
+                            </span>
+                            <kbd className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded-md border border-[var(--color-line)] bg-[var(--color-surface-2)] font-mono text-[10px] text-[var(--color-ink-3)]">
+                                ⌘K
+                            </kbd>
+                        </button>
                         {pathname !== '/' && (
                             <Link
                                 href="/"
@@ -95,9 +115,12 @@ export default function Navbar() {
                         )}
                         <LanguageToggle locale={locale} onToggle={toggle} />
                         <button
+                            type="button"
                             onClick={() => setOpen((v) => !v)}
                             className="md:hidden w-9 h-9 rounded-full border border-[var(--color-line)] bg-white flex items-center justify-center text-[var(--color-ink-2)] hover:border-[var(--color-accent)] transition-all duration-300"
                             aria-label={open ? 'Close menu' : 'Open menu'}
+                            aria-expanded={open}
+                            aria-controls="mobile-menu"
                         >
                             {open ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
                         </button>
@@ -108,6 +131,7 @@ export default function Navbar() {
             <AnimatePresence>
                 {open && (
                     <motion.div
+                        id="mobile-menu"
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}

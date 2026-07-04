@@ -1,16 +1,54 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Copy, RefreshCw, Lock, ShieldCheck } from 'lucide-react';
+import { Copy, Check, RefreshCw, Lock, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard } from '@/components/ToolShell';
+
+const AMBIGUOUS = /[0Ol1I|]/g;
+
+// Unbiased random integer in [0, max) via rejection sampling.
+function randomInt(max: number) {
+    const limit = Math.floor(0x100000000 / max) * max;
+    const buf = new Uint32Array(1);
+    let v: number;
+    do {
+        window.crypto.getRandomValues(buf);
+        v = buf[0];
+    } while (v >= limit);
+    return v % max;
+}
+
+function strengthScore(pass: string) {
+    if (!pass) return 0;
+    let score = 0;
+    if (pass.length > 8) score += 1;
+    if (pass.length > 12) score += 1;
+    if (/[A-Z]/.test(pass)) score += 1;
+    if (/[a-z]/.test(pass)) score += 1;
+    if (/[0-9]/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+    return score;
+}
 
 export default function PasswordGenerator() {
     const t = useT();
     const tt = t.pages.password;
+    const { locale } = useLanguage();
+    const s = locale === 'th'
+        ? {
+            excludeAmbiguous: 'ยกเว้นตัวอักษรที่สับสนง่าย (0, O, l, 1, I)',
+            copyFailed: 'คัดลอกไม่สำเร็จ',
+            clickToCopy: 'คลิกเพื่อคัดลอก',
+        }
+        : {
+            excludeAmbiguous: 'Exclude ambiguous (0, O, l, 1, I)',
+            copyFailed: 'Could not copy password',
+            clickToCopy: 'Click to copy',
+        };
     const [password, setPassword] = useState('');
     const [length, setLength] = useState(16);
     const [options, setOptions] = useState({
@@ -19,18 +57,14 @@ export default function PasswordGenerator() {
         numbers: true,
         symbols: true,
     });
+    const [excludeAmbiguous, setExcludeAmbiguous] = useState(false);
     const [strength, setStrength] = useState(0);
+    const [copied, setCopied] = useState(false);
+    const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const calculateStrength = (pass: string) => {
-        let score = 0;
-        if (!pass) { setStrength(0); return; }
-        if (pass.length > 8) score += 1;
-        if (pass.length > 12) score += 1;
-        if (/[A-Z]/.test(pass)) score += 1;
-        if (/[0-9]/.test(pass)) score += 1;
-        if (/[^A-Za-z0-9]/.test(pass)) score += 1;
-        setStrength(score);
-    };
+    useEffect(() => () => {
+        if (copyTimer.current) clearTimeout(copyTimer.current);
+    }, []);
 
     const generatePassword = useCallback(() => {
         const charset = {
@@ -39,27 +73,54 @@ export default function PasswordGenerator() {
             numbers: '0123456789',
             symbols: '!@#$%^&*()_+~`|}{[]:;?><,./-=',
         };
-        let chars = '';
-        if (options.uppercase) chars += charset.uppercase;
-        if (options.lowercase) chars += charset.lowercase;
-        if (options.numbers) chars += charset.numbers;
-        if (options.symbols) chars += charset.symbols;
-        if (!chars) { setPassword(''); return; }
+        const strip = (set: string) => (excludeAmbiguous ? set.replace(AMBIGUOUS, '') : set);
+        const pools: string[] = [];
+        if (options.uppercase) pools.push(strip(charset.uppercase));
+        if (options.lowercase) pools.push(strip(charset.lowercase));
+        if (options.numbers) pools.push(strip(charset.numbers));
+        if (options.symbols) pools.push(strip(charset.symbols));
+        const chars = pools.join('');
+        if (!chars) { setPassword(''); setStrength(0); return; }
 
-        const arr = new Uint32Array(length);
-        window.crypto.getRandomValues(arr);
-        let p = '';
-        for (let i = 0; i < length; i++) p += chars[arr[i] % chars.length];
+        const len = Math.min(64, Math.max(4, Math.floor(length) || 4));
+        // Guarantee at least one character from each selected set...
+        const result: string[] = pools.map((pool) => pool[randomInt(pool.length)]);
+        while (result.length < len) result.push(chars[randomInt(chars.length)]);
+        // ...then shuffle so the guaranteed characters land at random positions.
+        for (let i = result.length - 1; i > 0; i--) {
+            const j = randomInt(i + 1);
+            [result[i], result[j]] = [result[j], result[i]];
+        }
+        const p = result.join('');
         setPassword(p);
-        calculateStrength(p);
-    }, [length, options]);
+        setCopied(false);
+        setStrength(strengthScore(p));
+    }, [length, options, excludeAmbiguous]);
 
     useEffect(() => { generatePassword(); }, [generatePassword]);
 
-    const copy = () => {
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Enter' || e.metaKey || e.ctrlKey || e.altKey) return;
+            const el = e.target as HTMLElement | null;
+            if (el && (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'A'].includes(el.tagName) || el.isContentEditable)) return;
+            generatePassword();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [generatePassword]);
+
+    const copy = async () => {
         if (!password) return;
-        navigator.clipboard.writeText(password);
-        toast.success(tt.copied);
+        try {
+            await navigator.clipboard.writeText(password);
+            toast.success(tt.copied);
+            setCopied(true);
+            if (copyTimer.current) clearTimeout(copyTimer.current);
+            copyTimer.current = setTimeout(() => setCopied(false), 1500);
+        } catch {
+            toast.error(s.copyFailed);
+        }
     };
 
     const strengthColor = strength <= 2 ? 'bg-[#a4364c]' : strength <= 4 ? 'bg-[#b87a3d]' : 'bg-[#3d6a4a]';
@@ -82,16 +143,22 @@ export default function PasswordGenerator() {
                     transition={{ duration: 0.25 }}
                     className="relative mb-6 p-5 rounded-2xl bg-[var(--color-wine-50)] border-[1.5px] border-[var(--color-wine-100)] flex items-center justify-between gap-4"
                 >
-                    <span className="font-mono text-xl sm:text-2xl text-[var(--color-wine-800)] break-all">
+                    <button
+                        type="button"
+                        onClick={copy}
+                        title={s.clickToCopy}
+                        className="font-mono text-xl sm:text-2xl text-[var(--color-wine-800)] break-all text-left cursor-pointer select-all"
+                    >
                         {password}
-                    </span>
+                    </button>
                     <div className="flex gap-1.5 shrink-0">
                         <motion.button
                             whileTap={{ scale: 0.9, rotate: 180 }}
                             transition={{ type: 'spring', stiffness: 300 }}
                             onClick={generatePassword}
                             className="p-2.5 rounded-xl text-[var(--color-wine-700)] hover:bg-white transition-colors"
-                            title={tt.regenerate}
+                            title={`${tt.regenerate} (Enter)`}
+                            aria-label={tt.regenerate}
                         >
                             <RefreshCw className="w-4 h-4" />
                         </motion.button>
@@ -100,8 +167,11 @@ export default function PasswordGenerator() {
                             onClick={copy}
                             className="p-2.5 rounded-xl text-[var(--color-wine-700)] hover:bg-white transition-colors"
                             title={tt.copy}
+                            aria-label={tt.copy}
                         >
-                            <Copy className="w-4 h-4" />
+                            {copied
+                                ? <Check className="w-4 h-4 text-[#3d6a4a]" />
+                                : <Copy className="w-4 h-4" />}
                         </motion.button>
                     </div>
                 </motion.div>
@@ -111,7 +181,7 @@ export default function PasswordGenerator() {
                         <motion.div
                             className={cn('h-full transition-colors', strengthColor)}
                             initial={{ width: 0 }}
-                            animate={{ width: `${(strength / 5) * 100}%` }}
+                            animate={{ width: `${(strength / 6) * 100}%` }}
                             transition={{ type: 'spring', stiffness: 220, damping: 26 }}
                         />
                     </div>
@@ -123,16 +193,33 @@ export default function PasswordGenerator() {
                 <div className="space-y-7">
                     <div>
                         <div className="flex items-center justify-between mb-3">
-                            <label className="text-[12.5px] font-semibold tracking-wide text-[var(--color-wine-700)]">
+                            <label
+                                htmlFor="pw-length"
+                                className="text-[12.5px] font-semibold tracking-wide text-[var(--color-wine-700)]"
+                            >
                                 {tt.length}
                             </label>
-                            <span className="font-mono font-bold text-[var(--color-wine-700)] text-lg">{length}</span>
+                            <input
+                                type="number"
+                                min={4}
+                                max={64}
+                                value={length}
+                                onChange={(e) => {
+                                    const v = parseInt(e.target.value, 10);
+                                    if (Number.isNaN(v)) return;
+                                    setLength(Math.min(64, v));
+                                }}
+                                onBlur={() => setLength((v) => Math.min(64, Math.max(4, v)))}
+                                aria-label={tt.length}
+                                className="w-16 font-mono font-bold text-[var(--color-wine-700)] text-lg text-right bg-transparent border-b-[1.5px] border-[var(--color-wine-100)] focus:border-[var(--color-wine-400)] outline-none"
+                            />
                         </div>
                         <input
+                            id="pw-length"
                             type="range"
                             min={4}
                             max={64}
-                            value={length}
+                            value={Math.min(64, Math.max(4, length))}
                             onChange={(e) => setLength(parseInt(e.target.value))}
                             className="w-full h-2 bg-[var(--color-smoke-200)] rounded-full appearance-none cursor-pointer accent-[var(--color-wine-700)]"
                         />
@@ -161,12 +248,36 @@ export default function PasswordGenerator() {
                                     <input
                                         type="checkbox"
                                         checked={checked}
-                                        onChange={(e) => setOptions((p) => ({ ...p, [key]: e.target.checked }))}
+                                        onChange={(e) =>
+                                            setOptions((p) => {
+                                                const next = { ...p, [key]: e.target.checked };
+                                                // Keep at least one character set selected.
+                                                if (!next.uppercase && !next.lowercase && !next.numbers && !next.symbols) return p;
+                                                return next;
+                                            })
+                                        }
                                         className="w-5 h-5 accent-[var(--color-wine-700)] rounded"
                                     />
                                 </motion.label>
                             );
                         })}
+                        <motion.label
+                            whileHover={{ y: -1 }}
+                            className={cn(
+                                'sm:col-span-2 flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all border-[1.5px]',
+                                excludeAmbiguous
+                                    ? 'bg-[var(--color-wine-50)] border-[var(--color-wine-300)]'
+                                    : 'bg-white border-[var(--color-wine-100)] hover:border-[var(--color-wine-200)]'
+                            )}
+                        >
+                            <span className="text-[14px] font-medium text-[var(--color-wine-700)]">{s.excludeAmbiguous}</span>
+                            <input
+                                type="checkbox"
+                                checked={excludeAmbiguous}
+                                onChange={(e) => setExcludeAmbiguous(e.target.checked)}
+                                className="w-5 h-5 accent-[var(--color-wine-700)] rounded"
+                            />
+                        </motion.label>
                     </div>
                 </div>
             </ToolCard>

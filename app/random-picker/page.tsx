@@ -1,23 +1,52 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shuffle, Trash2, RotateCcw, Sparkles } from 'lucide-react';
-import { useT } from '@/lib/i18n/LanguageProvider';
+import { Shuffle, Trash2, RotateCcw, Sparkles, Copy, Check } from 'lucide-react';
+import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, FieldLabel, GhostButton, PrimaryButton } from '@/components/ToolShell';
+
+const HISTORY_DISPLAY_LIMIT = 12;
 
 export default function RandomPickerPage() {
     const t = useT();
+    const { locale } = useLanguage();
     const tt = t.pages.randomPicker;
+    const s = locale === 'th'
+        ? {
+            clearHistory: 'ล้างประวัติ',
+            copyWinner: 'คัดลอกผลที่ได้',
+            copied: 'คัดลอกแล้ว',
+            exhausted: 'สุ่มครบทุกรายการแล้ว',
+            newRound: 'เริ่มรอบใหม่',
+            tryExample: 'ลองตัวอย่าง',
+            remaining: (left: number, total: number) => `เหลือ ${left} จาก ${total} รายการ`,
+        }
+        : {
+            clearHistory: 'Clear history',
+            copyWinner: 'Copy winner',
+            copied: 'Copied',
+            exhausted: 'Everyone has been picked.',
+            newRound: 'Start a new round',
+            tryExample: 'Try an example',
+            remaining: (left: number, total: number) => `${left} of ${total} remaining`,
+        };
+
     const [raw, setRaw] = useState('');
     const [winner, setWinner] = useState<string | null>(null);
     const [history, setHistory] = useState<string[]>([]);
     const [noRepeat, setNoRepeat] = useState(false);
     const [picking, setPicking] = useState(false);
     const [tickItem, setTickItem] = useState<string | null>(null);
+    const [tickN, setTickN] = useState(0);
+    const [copied, setCopied] = useState(false);
+
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const eligibleRef = useRef<string[]>([]);
 
     const items = useMemo(
-        () => raw.split('\n').map((s) => s.trim()).filter(Boolean),
+        () => raw.split(/[\n,\t]/).map((x) => x.trim()).filter(Boolean),
         [raw]
     );
 
@@ -26,30 +55,82 @@ export default function RandomPickerPage() {
         [items, history, noRepeat]
     );
 
-    const pick = async () => {
-        if (eligible.length < 1) return;
+    useEffect(() => {
+        eligibleRef.current = eligible;
+    }, [eligible]);
+
+    useEffect(() => () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    }, []);
+
+    const cancelRun = useCallback(() => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+        setTickItem(null);
+        setPicking(false);
+    }, []);
+
+    const resetAll = useCallback(() => {
+        cancelRun();
+        setHistory([]);
+        setWinner(null);
+        setCopied(false);
+    }, [cancelRun, setHistory, setWinner, setCopied]);
+
+    const pick = () => {
+        if (picking || items.length < 2 || eligibleRef.current.length < 1) return;
         setPicking(true);
         setWinner(null);
+        setCopied(false);
 
         const totalMs = 1800;
         const start = performance.now();
         const tick = () => {
-            const elapsed = performance.now() - start;
-            const t = elapsed / totalMs;
-            if (t >= 1) {
-                const choice = eligible[Math.floor(Math.random() * eligible.length)];
-                setWinner(choice);
-                setHistory((h) => [choice, ...h].slice(0, 12));
+            const pool = eligibleRef.current;
+            if (pool.length < 1) {
+                // list was emptied mid-animation
+                timerRef.current = null;
                 setTickItem(null);
                 setPicking(false);
                 return;
             }
-            setTickItem(eligible[Math.floor(Math.random() * eligible.length)]);
-            const delay = 40 + t * 220;
-            setTimeout(tick, delay);
+            const elapsed = performance.now() - start;
+            const p = elapsed / totalMs;
+            if (p >= 1) {
+                const choice = pool[Math.floor(Math.random() * pool.length)];
+                timerRef.current = null;
+                setWinner(choice);
+                setHistory((h) => [choice, ...h]);
+                setTickItem(null);
+                setPicking(false);
+                return;
+            }
+            setTickItem(pool[Math.floor(Math.random() * pool.length)]);
+            setTickN((n) => n + 1);
+            const delay = 40 + p * 220;
+            timerRef.current = setTimeout(tick, delay);
         };
         tick();
     };
+
+    const copyWinner = async () => {
+        if (!winner) return;
+        try {
+            await navigator.clipboard.writeText(winner);
+            setCopied(true);
+            if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = setTimeout(() => setCopied(false), 1500);
+        } catch { /* ignore */ }
+    };
+
+    const exampleList = tt.listPlaceholder.split('\n').slice(1).join('\n');
+    const exhausted = noRepeat && items.length >= 2 && eligible.length === 0;
+    const countHint = noRepeat
+        ? s.remaining(eligible.length, items.length)
+        : `${items.length} ${tt.countLabel}`;
 
     return (
         <ToolShell
@@ -61,10 +142,16 @@ export default function RandomPickerPage() {
         >
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ToolCard>
-                    <FieldLabel hint={`${items.length} ${tt.countLabel}`}>{tt.listLabel}</FieldLabel>
+                    <FieldLabel hint={countHint}>{tt.listLabel}</FieldLabel>
                     <textarea
                         value={raw}
                         onChange={(e) => setRaw(e.target.value)}
+                        onKeyDown={(e) => {
+                            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                e.preventDefault();
+                                pick();
+                            }
+                        }}
                         placeholder={tt.listPlaceholder}
                         className="w-full h-80 p-4 rounded-2xl border-[1.5px] border-[var(--color-wine-100)] focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)] transition-all resize-none font-mono text-[14px] bg-white text-[var(--color-wine-800)] placeholder:text-[var(--color-smoke-600)]/60"
                     />
@@ -79,10 +166,18 @@ export default function RandomPickerPage() {
                             />
                             {tt.noRepeat}
                         </label>
-                        <GhostButton tone="danger" onClick={() => { setHistory([]); setWinner(null); }} disabled={!history.length && !winner}>
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            {tt.reset}
-                        </GhostButton>
+                        <div className="flex items-center gap-1">
+                            {items.length === 0 && (
+                                <GhostButton onClick={() => setRaw(exampleList)}>
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    {s.tryExample}
+                                </GhostButton>
+                            )}
+                            <GhostButton tone="danger" onClick={resetAll} disabled={!history.length && !winner && !picking}>
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                {tt.reset}
+                            </GhostButton>
+                        </div>
                     </div>
                 </ToolCard>
 
@@ -96,12 +191,12 @@ export default function RandomPickerPage() {
                         <AnimatePresence mode="wait">
                             {picking && tickItem && (
                                 <motion.div
-                                    key={tickItem + Math.random()}
+                                    key={tickN}
                                     initial={{ opacity: 0, scale: 0.92, y: -6 }}
                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                     exit={{ opacity: 0, scale: 0.92, y: 6 }}
                                     transition={{ duration: 0.1 }}
-                                    className="text-3xl sm:text-4xl font-semibold text-[var(--color-wine-700)] break-all"
+                                    className="text-3xl sm:text-4xl font-semibold text-[var(--color-wine-700)] break-words max-w-full"
                                 >
                                     {tickItem}
                                 </motion.div>
@@ -112,12 +207,25 @@ export default function RandomPickerPage() {
                                     initial={{ opacity: 0, scale: 0.7, rotate: -3 }}
                                     animate={{ opacity: 1, scale: 1, rotate: 0 }}
                                     transition={{ type: 'spring', stiffness: 200, damping: 14 }}
-                                    className="relative"
+                                    className="flex items-center justify-center gap-2 max-w-full"
                                 >
-                                    <div className="absolute inset-x-0 -bottom-1 h-3 bg-[var(--color-wine-200)]/70 rounded-sm" />
-                                    <span className="relative text-3xl sm:text-4xl font-bold text-[var(--color-wine-700)] break-all px-2">
-                                        {winner}
+                                    <span className="relative inline-block min-w-0">
+                                        <span aria-hidden className="absolute inset-x-0 -bottom-1 h-3 bg-[var(--color-wine-200)]/70 rounded-sm" />
+                                        <span className="relative text-3xl sm:text-4xl font-bold text-[var(--color-wine-700)] break-words px-2">
+                                            {winner}
+                                        </span>
                                     </span>
+                                    <button
+                                        type="button"
+                                        onClick={copyWinner}
+                                        aria-label={copied ? s.copied : s.copyWinner}
+                                        title={copied ? s.copied : s.copyWinner}
+                                        className="shrink-0 p-2 rounded-lg text-[var(--color-smoke-600)] hover:text-[var(--color-wine-700)] hover:bg-[var(--color-wine-50)] transition-colors"
+                                    >
+                                        {copied
+                                            ? <Check className="w-4 h-4 text-emerald-600" />
+                                            : <Copy className="w-4 h-4" />}
+                                    </button>
                                 </motion.div>
                             )}
                             {!picking && !winner && (
@@ -128,10 +236,23 @@ export default function RandomPickerPage() {
                         </AnimatePresence>
                     </div>
 
-                    <PrimaryButton onClick={pick} disabled={picking || eligible.length < 1} className="px-8 py-3.5">
+                    <PrimaryButton onClick={pick} disabled={picking || items.length < 2 || eligible.length < 1} className="px-8 py-3.5">
                         <Shuffle className="w-4 h-4" />
                         {picking ? tt.picking : tt.pick}
                     </PrimaryButton>
+
+                    {exhausted && !picking && (
+                        <p className="mt-3 text-[13px] text-[var(--color-smoke-600)]">
+                            {s.exhausted}{' '}
+                            <button
+                                type="button"
+                                onClick={resetAll}
+                                className="underline underline-offset-2 font-medium text-[var(--color-wine-700)] hover:text-[var(--color-wine-800)]"
+                            >
+                                {s.newRound}
+                            </button>
+                        </p>
+                    )}
 
                     {history.length > 0 && (
                         <div className="mt-8 w-full">
@@ -141,18 +262,20 @@ export default function RandomPickerPage() {
                                 </span>
                                 <button
                                     onClick={() => setHistory([])}
-                                    className="inline-flex items-center gap-1 text-[12px] text-[#a4364c] hover:text-[#7a2a36]"
+                                    aria-label={s.clearHistory}
+                                    title={s.clearHistory}
+                                    className="inline-flex items-center gap-1 p-1 rounded text-[12px] text-[var(--color-smoke-600)] hover:text-[var(--color-wine-700)] transition-colors"
                                 >
                                     <Trash2 className="w-3 h-3" />
                                 </button>
                             </div>
                             <div className="flex flex-wrap gap-1.5">
-                                {history.map((h, i) => (
+                                {history.slice(0, HISTORY_DISPLAY_LIMIT).map((h, i) => (
                                     <span
                                         key={i}
                                         className="px-3 py-1 rounded-full bg-[var(--color-wine-50)] border border-[var(--color-wine-100)] text-[12px] text-[var(--color-wine-700)] font-medium"
                                     >
-                                        {h}
+                                        <span className="text-[var(--color-smoke-600)]">{history.length - i}.</span> {h}
                                     </span>
                                 ))}
                             </div>
