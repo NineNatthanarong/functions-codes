@@ -1,9 +1,11 @@
 import * as pdfjsLib from 'pdfjs-dist';
 import heic2any from 'heic2any';
 
-// Initialize PDF.js worker
 if (typeof window !== 'undefined' && 'Worker' in window) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+    ).toString();
 }
 
 export type ConversionFormat = 'image/png' | 'image/jpeg' | 'image/webp';
