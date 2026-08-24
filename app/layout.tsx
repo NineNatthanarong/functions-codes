@@ -37,8 +37,8 @@ export const viewport = {
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#14213d' },
+    { media: '(prefers-color-scheme: light)', color: '#eef1f5' },
+    { media: '(prefers-color-scheme: dark)', color: '#0c1222' },
   ],
 };
 
@@ -164,10 +164,10 @@ export default function RootLayout({
             toastOptions={{
               style: {
                 fontFamily: 'var(--font-sans)',
-                background: '#14213d',
-                color: '#ffffff',
-                border: '1px solid #000000',
-                borderRadius: '14px',
+                background: '#0c1222',
+                color: '#f4f6fa',
+                border: '2px solid #fca311',
+                borderRadius: '0px',
               },
             }}
           />

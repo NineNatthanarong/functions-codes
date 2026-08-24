@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { translations } from '@/lib/i18n/translations';
 import { TOOLS, getTool, type ToolDef } from '@/lib/tools';
+import { roomCode } from '@/lib/office';
 import { useRecentTools } from '@/lib/useRecentTools';
 
 export const OPEN_PALETTE_EVENT = 'fc-open-palette';
@@ -162,21 +163,24 @@ export default function CommandPalette() {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18 }}
-          className="fixed inset-0 z-[100] flex items-start justify-center pt-[12vh] px-4 bg-[var(--color-ink)]/30 backdrop-blur-sm"
+          className="fixed inset-0 z-modal-backdrop flex items-start justify-center pt-[12vh] px-4 bg-[var(--color-tower)]/70"
           onMouseDown={(e) => {
             if (e.target === e.currentTarget) setOpen(false);
           }}
           role="dialog"
           aria-modal="true"
-          aria-label={t.common.searchTools}
+          aria-label={t.common.concierge}
         >
           <motion.div
             initial={{ opacity: 0, y: -12, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.99 }}
             transition={{ duration: 0.22, ease: [0.25, 1, 0.5, 1] }}
-            className="w-full max-w-xl overflow-hidden rounded-2xl bg-white border border-[var(--color-line-strong)] shadow-deep"
+            className="z-modal w-full max-w-xl overflow-hidden bg-white border-2 border-[var(--color-ink-2)] shadow-deep"
           >
+            <div className="px-4 pt-3 pb-1 font-mono text-[11px] tracking-[0.06em] text-[var(--color-ink-3)]">
+              {t.common.concierge}
+            </div>
             <div className="flex items-center gap-3 px-4 border-b border-[var(--color-line)]">
               <Search className="w-4 h-4 text-[var(--color-ink-3)] flex-shrink-0" strokeWidth={2.2} />
               <input
@@ -184,7 +188,7 @@ export default function CommandPalette() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onKeyDown}
-                placeholder={t.common.searchTools}
+                placeholder={t.home.searchPlaceholder}
                 autoComplete="off"
                 autoCorrect="off"
                 autoCapitalize="off"
@@ -284,14 +288,14 @@ function PaletteRow({
       onMouseMove={onHover}
       onClick={onSelect}
       className={cn(
-        'w-full flex items-center gap-3.5 px-4 py-2.5 mx-1 rounded-xl text-left transition-colors duration-100',
+        'w-full flex items-center gap-3.5 px-4 py-2.5 mx-1 text-left min-h-11',
         active ? 'bg-[var(--color-surface-2)]' : 'bg-transparent'
       )}
       style={{ width: 'calc(100% - 0.5rem)' }}
     >
       <span
         className={cn(
-          'inline-flex items-center justify-center w-8 h-8 rounded-lg border flex-shrink-0 transition-colors duration-100',
+          'inline-flex items-center justify-center w-8 h-8 border flex-shrink-0',
           active
             ? 'bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-ink-2)]'
             : 'bg-[var(--color-surface-2)] border-[var(--color-line)] text-[var(--color-ink)]'
@@ -301,6 +305,7 @@ function PaletteRow({
       </span>
       <span className="flex-1 min-w-0">
         <span className="block text-[13.5px] font-semibold tracking-[-0.01em] text-[var(--color-ink-2)] truncate">
+          <span className="font-mono text-[11px] text-[var(--color-ink-3)] mr-2">{roomCode(tool.slug)}</span>
           {text.title ?? tool.slug}
         </span>
         {text.desc && (

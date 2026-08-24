@@ -1,20 +1,18 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { motion, AnimatePresence, useScroll, useTransform, MotionValue } from 'framer-motion';
-import {
-  Search, ArrowUpRight, ShieldCheck, WifiOff, HeartHandshake, X, Clock3,
-} from 'lucide-react';
+import { Search, X, ArrowUpRight, Clock3, ShieldCheck, WifiOff, HeartHandshake } from 'lucide-react';
+import { useReducedMotion } from 'framer-motion';
 import { useLanguage } from '@/lib/i18n/LanguageProvider';
 import { translations } from '@/lib/i18n/translations';
-import { TOOLS, getTool, type ToolKey, type ToolDef } from '@/lib/tools';
+import { TOOLS, getTool, type ToolKey, type ToolDef, type ToolCategory } from '@/lib/tools';
 import { useRecentTools } from '@/lib/useRecentTools';
 import { cn } from '@/lib/utils';
-
-type Category = 'all' | 'file' | 'image' | 'dev' | 'write' | 'audio' | 'fun';
-
-const EASE = [0.25, 1, 0.5, 1] as const;
+import { FLOOR_ID, FLOOR_ORDER, roomCode, type FloorKey } from '@/lib/office';
+import Skyline from '@/components/office/Skyline';
+import LobbyClock from '@/components/office/LobbyClock';
+import { ElevatorDoors, ElevatorPanel, useElevatorRide } from '@/components/office/Elevator';
 
 type CardText = { title: string; desc: string };
 
@@ -52,37 +50,34 @@ function tokenize(q: string): string[] {
   return matches ? matches.filter(Boolean) : [];
 }
 
-const container = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.02, delayChildren: 0.04 } },
-};
-
-const item = {
-  hidden: { opacity: 0, y: 14 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.55, ease: EASE } },
+type Listed = {
+  key: ToolKey;
+  def: ToolDef;
+  href: string;
+  title: string;
+  desc: string;
+  category: ToolCategory;
+  room: string;
 };
 
 export default function Home() {
   const { t, locale } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [category, setCategory] = useState<Category>('all');
+  const ride = useElevatorRide('all');
+  const reduced = useReducedMotion();
 
-  const heroRef = useRef<HTMLElement>(null);
-  const { scrollYProgress: heroProgress } = useScroll({
-    target: heroRef,
-    offset: ['start start', 'end start'],
-  });
+  const floorLabels: Record<FloorKey, string> = {
+    all: t.common.lobby,
+    file: t.home.categoryFile,
+    image: t.home.categoryImage,
+    dev: t.home.categoryDev,
+    write: t.home.categoryWrite,
+    audio: t.home.categoryAudio,
+    fun: t.home.categoryFun,
+  };
 
-  // Parallax layers — different speeds for depth
-  const heroBgY = useTransform(heroProgress, [0, 1], ['0%', '40%']);
-  const heroMidY = useTransform(heroProgress, [0, 1], ['0%', '20%']);
-  const heroFgY = useTransform(heroProgress, [0, 1], ['0%', '-8%']);
-  const heroOpacity = useTransform(heroProgress, [0, 0.6, 1], [1, 0.6, 0]);
-  const heroScale = useTransform(heroProgress, [0, 1], [1, 0.94]);
-
-  const tools = useMemo(() => {
+  const tools = useMemo<Listed[]>(() => {
     const tokens = tokenize(searchQuery);
-
     const matchedKeys = new Set<ToolKey>(
       tokens.length === 0
         ? TOOLS.map((tool) => tool.slug as ToolKey)
@@ -91,74 +86,66 @@ export default function Home() {
 
     return TOOLS
       .filter((tool) => matchedKeys.has(tool.slug as ToolKey))
+      .filter((tool) => ride.floor === 'all' || tool.category === ride.floor)
       .map((tool) => ({
         key: tool.slug as ToolKey,
         def: tool as ToolDef,
         ...toolText(locale, tool.slug),
-        category: tool.category as string,
+        category: tool.category as ToolCategory,
         href: '/' + tool.slug,
-      }))
-      .filter((tool) => category === 'all' || tool.category === category);
-  }, [searchQuery, category, locale]);
+        room: roomCode(tool.slug),
+      }));
+  }, [searchQuery, ride.floor, locale]);
 
-  const categories: { key: Category; label: string }[] = [
-    { key: 'all', label: t.home.categoryAll },
-    { key: 'file', label: t.home.categoryFile },
-    { key: 'image', label: t.home.categoryImage },
-    { key: 'dev', label: t.home.categoryDev },
-    { key: 'write', label: t.home.categoryWrite },
-    { key: 'audio', label: t.home.categoryAudio },
-    { key: 'fun', label: t.home.categoryFun },
-  ];
+  const grouped = useMemo(() => {
+    if (ride.floor !== 'all' || searchQuery.trim()) return null;
+    return FLOOR_ORDER.filter((k) => k !== 'all').map((key) => ({
+      key,
+      id: FLOOR_ID[key],
+      label: floorLabels[key],
+      items: tools.filter((t) => t.category === key),
+    })).filter((g) => g.items.length > 0);
+  }, [ride.floor, searchQuery, tools, floorLabels]);
+
+  const featured = !searchQuery.trim() && ride.floor !== 'all' ? tools[0] : undefined;
+  const rest = featured ? tools.slice(1) : tools;
+  const shownFloorKey = (FLOOR_ORDER.find((k) => FLOOR_ID[k] === ride.shown) ?? ride.floor);
 
   return (
     <div className="relative">
-      {/* ──────── HERO with parallax ──────── */}
-      <section
-        ref={heroRef}
-        className="relative h-[calc(100vh-4rem)] min-h-[640px] flex items-center justify-center overflow-hidden parallax-stage"
+      <a
+        href="#directory"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-20 focus:left-4 focus:z-[80] focus:bg-white focus:px-3 focus:py-2"
       >
-        <ParallaxAmbient bgY={heroBgY} midY={heroMidY} />
+        {t.common.directory}
+      </a>
 
-        <motion.div
-          style={{ y: heroFgY, opacity: heroOpacity, scale: heroScale }}
-          className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
-        >
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: EASE }}
-            className="flex justify-center mb-3"
-          >
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] text-[11.5px] font-medium tracking-[0.04em] text-[var(--color-ink)]">
-              <span className="relative flex w-1.5 h-1.5">
-                <span className="absolute inset-0 rounded-full bg-[var(--color-accent)] animate-ping opacity-60" />
-                <span className="relative w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />
-              </span>
+      <section className="lobby-atrium -mt-16">
+        <div className="lobby-stage">
+          <div className="lobby-copy">
+            <span className="lobby-plaque">
+              <span className="lobby-plaque-lamp" />
               {t.home.kicker}
             </span>
-          </motion.div>
 
-          <div className="text-center max-w-4xl mx-auto">
-            <h1 className={cn(
-              'display-1 text-[var(--color-ink)]',
-              locale === 'th'
-                ? 'text-[2.75rem] sm:text-[3.75rem] lg:text-[5rem] leading-[1.15]'
-                : 'text-[3.75rem] sm:text-[5.25rem] lg:text-[7rem] leading-[1.0]'
-            )}>
-              <AnimatedHeadline locale={locale} t={t.home} />
+            <h1
+              className={cn(
+                'display-1 text-white mt-6',
+                locale === 'th'
+                  ? 'text-[2rem] sm:text-[2.5rem] lg:text-[3.25rem] leading-[1.2]'
+                  : 'text-[2.25rem] sm:text-[2.75rem] lg:text-[3.5rem] leading-[1.08]'
+              )}
+            >
+              <span className="block">{t.home.heading1}</span>
+              <span className="block">{t.home.heading2}</span>
+              {t.home.heading3 ? <span className="block">{t.home.heading3}</span> : null}
             </h1>
 
-            <motion.p
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.55, duration: 0.6, ease: EASE }}
-              className="mt-5 text-[17px] sm:text-[19px] text-[var(--color-ink-3)] max-w-2xl mx-auto leading-[1.55] tracking-[-0.005em]"
-            >
+            <p className="lobby-lead mt-4 max-w-[46ch] text-[16px] sm:text-[17px] leading-[1.65]">
               {t.home.lead}
-            </motion.p>
+            </p>
 
-            <HeroSearch
+            <ConciergeSearch
               value={searchQuery}
               onChange={setSearchQuery}
               placeholder={t.home.searchPlaceholder}
@@ -167,208 +154,139 @@ export default function Home() {
               t={t}
             />
 
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.05, duration: 0.6 }}
-              className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2"
-            >
-              <PrincipleChip icon={<ShieldCheck className="w-3.5 h-3.5" strokeWidth={2.2} />} label={t.home.badge1} />
-              <PrincipleChip icon={<WifiOff className="w-3.5 h-3.5" strokeWidth={2.2} />} label={t.home.badge2} />
-              <PrincipleChip icon={<HeartHandshake className="w-3.5 h-3.5" strokeWidth={2.2} />} label={t.home.badge3} />
-            </motion.div>
+            <ul className="lobby-trust mt-8">
+              <li>
+                <ShieldCheck className="w-3.5 h-3.5 text-[var(--color-accent)]" strokeWidth={2.2} />
+                {t.home.badge1}
+              </li>
+              <li>
+                <WifiOff className="w-3.5 h-3.5 text-[var(--color-accent)]" strokeWidth={2.2} />
+                {t.home.badge2}
+              </li>
+              <li>
+                <HeartHandshake className="w-3.5 h-3.5 text-[var(--color-accent)]" strokeWidth={2.2} />
+                {t.home.badge3}
+              </li>
+            </ul>
           </div>
-        </motion.div>
+
+          <div className="lobby-window" aria-hidden>
+            <Skyline />
+            <div className="lobby-window-meta">
+              <LobbyClock />
+              <span className="lobby-hours">{t.common.alwaysOpen}</span>
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* ──────── MARQUEE ──────── */}
-      <Marquee items={t.home.marquee} />
+      <section id="directory" className="work-floor pt-0 md:pt-10 pb-20">
+        <div className="max-w-7xl mx-auto md:px-6 lg:px-8 md:grid md:grid-cols-[13.5rem_1fr] md:gap-8 lg:gap-12">
+          <aside className="elevator-rail z-sticky md:self-start bg-[var(--color-tower)] md:bg-transparent">
+            <ElevatorPanel
+              floor={ride.floor}
+              shown={ride.shown}
+              shut={ride.shut}
+              onChange={(f) => {
+                ride.go(f);
+                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+                  document.getElementById('directory')?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
+                }
+              }}
+              labels={floorLabels}
+              ariaLabel={t.common.elevator}
+            />
+          </aside>
 
-      {/* ──────── TOOLS ──────── */}
-      <ToolsSection
-        t={t}
-        locale={locale}
-        tools={tools}
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-        category={category}
-        setCategory={setCategory}
-        categories={categories}
-      />
+          <div className="px-4 sm:px-6 md:px-0 pt-6 md:pt-0">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-5">
+              <div>
+                <p className="font-mono text-[11px] text-[var(--color-ink-3)] tracking-[0.04em]">
+                  {t.common.nowOn} {ride.shown} · {floorLabels[shownFloorKey]}
+                </p>
+                <h2 className="display-2 text-[1.75rem] sm:text-[2.15rem] text-[var(--color-ink)] mt-1">
+                  {t.common.directory}
+                </h2>
+              </div>
+              <p className="font-mono text-[12px] text-[var(--color-ink-3)] tabular-nums">
+                {tools.length} {t.common.rooms}
+              </p>
+            </div>
 
-      {/* ──────── PRIVACY ──────── */}
-      <PrivacySection t={t} locale={locale} />
+            <RecentRooms locale={locale} t={t} />
+
+            <div className="directory-stage">
+              <ElevatorDoors
+                shut={ride.shut}
+                shown={ride.shown}
+                label={floorLabels[shownFloorKey]}
+              />
+
+              {tools.length === 0 && (
+                <div className="bg-[var(--color-surface)] border border-[var(--color-line)] p-10 text-center">
+                  <p className="text-[15px] font-semibold text-[var(--color-ink)]">
+                    {t.common.vacantFloor} “{searchQuery}”
+                  </p>
+                  <p className="text-[13.5px] text-[var(--color-ink-3)] mt-2">{t.common.vacantHint}</p>
+                </div>
+              )}
+
+              {featured && (
+                <SuiteRow item={featured} enterLabel={t.common.enterRoom} newLabel={t.common.newBadge} />
+              )}
+
+              {grouped
+                ? grouped.map((g) => (
+                    <div key={g.key} className="mb-2">
+                      <div className="dir-floor-head">
+                        <span className="dir-floor-id">{g.id}</span>
+                        <span className="dir-floor-name">{g.label}</span>
+                        <span className="dir-floor-count">
+                          {g.items.length} {t.common.rooms}
+                        </span>
+                      </div>
+                      {g.items.map((item) => (
+                        <DirRow key={item.key} item={item} newLabel={t.common.newBadge} />
+                      ))}
+                    </div>
+                  ))
+                : rest.map((item) => (
+                    <DirRow key={item.key} item={item} newLabel={t.common.newBadge} />
+                  ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="security-desk">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 grid md:grid-cols-[1.2fr_1fr] gap-12">
+          <div>
+            <h2 className="display-2 text-[2rem] sm:text-[2.5rem] text-white">
+              {t.home.privacyTitle}
+            </h2>
+            <p className="mt-5 max-w-md text-[15px] text-[var(--color-lobby-mist)] leading-[1.6]">
+              {t.home.privacyBody}
+            </p>
+          </div>
+          <ul className="space-y-5 self-center">
+            {[
+              locale === 'th' ? 'ไม่ต้องสมัครครับ' : 'No account to create.',
+              locale === 'th' ? 'ไฟล์ไม่ออกจากเครื่อง' : 'Your files don’t go anywhere.',
+              locale === 'th' ? 'ใช้ได้เลยทันที' : 'Ready when you are.',
+            ].map((line) => (
+              <li key={line} className="flex items-center gap-3 text-[15px] text-[#f4f6fa]">
+                <span className="security-lamp" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
     </div>
   );
 }
 
-/* ─────────── sections with their own parallax ─────────── */
-
-function ToolsSection({
-  t, locale, tools, searchQuery, setSearchQuery, category, setCategory, categories,
-}: {
-  t: ReturnType<typeof useLanguage>['t'];
-  locale: 'th' | 'en';
-  tools: { key: ToolKey; def: ToolDef; href: string; title: string; desc: string }[];
-  searchQuery: string;
-  setSearchQuery: (s: string) => void;
-  category: Category;
-  setCategory: (c: Category) => void;
-  categories: { key: Category; label: string }[];
-}) {
-  const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ['start end', 'end start'],
-  });
-  const headerY = useTransform(scrollYProgress, [0, 1], ['60px', '-60px']);
-  const headerOpacity = useTransform(scrollYProgress, [0, 0.15, 0.85, 1], [0.4, 1, 1, 0.6]);
-
-  return (
-    <section ref={ref} id="tools" className="relative pt-24 sm:pt-32 pb-24">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <motion.div
-          style={{ y: headerY, opacity: headerOpacity }}
-          className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-10 mb-12"
-        >
-          <div className="max-w-2xl">
-            <p className="kicker text-[var(--color-ink-3)] mb-5">
-              {t.home.browseLabel}
-            </p>
-            <h2 className="display-2 text-[2.25rem] sm:text-[3rem] text-[var(--color-ink)]">
-              {locale === 'th' ? 'เครื่องมือทุกอย่าง' : 'Every tool,'}
-              <span className="block text-[var(--color-ink-3)]">
-                {locale === 'th' ? 'ในที่เดียว' : 'in one place.'}
-              </span>
-            </h2>
-          </div>
-
-          <SearchBox value={searchQuery} onChange={setSearchQuery} placeholder={t.home.searchPlaceholder} />
-        </motion.div>
-
-        <RecentRow t={t} locale={locale} />
-
-        <CategoryTabs categories={categories} active={category} onChange={setCategory} />
-
-        <motion.div
-          variants={container}
-          initial="hidden"
-          animate="show"
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px mt-10 bg-[var(--color-line)] rounded-3xl overflow-hidden border border-[var(--color-line)] shadow-soft"
-        >
-          {tools.map((tool, idx) => {
-            const Icon = tool.def.icon;
-            return (
-              <ToolCard
-                key={tool.key}
-                index={idx}
-                href={tool.href}
-                title={tool.title}
-                desc={tool.desc}
-                icon={<Icon className="w-[18px] h-[18px]" strokeWidth={1.8} />}
-                isNew={Boolean((tool.def as { isNew?: boolean }).isNew)}
-                newLabel={t.common.newBadge}
-                tryLabel={t.common.tryNow}
-              />
-            );
-          })}
-        </motion.div>
-
-        {tools.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: EASE }}
-            className="mt-12 max-w-md mx-auto text-center bg-[var(--color-surface)] border border-[var(--color-line)] rounded-2xl p-10"
-          >
-            <p className="text-[15px] text-[var(--color-ink)] font-semibold tracking-[-0.01em]">
-              {t.common.noResults} &ldquo;{searchQuery}&rdquo;
-            </p>
-            <p className="text-[13.5px] text-[var(--color-ink-3)] mt-2 tracking-[-0.005em]">{t.common.noResultsHint}</p>
-          </motion.div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function PrivacySection({ t, locale }: { t: ReturnType<typeof useLanguage>['t']; locale: 'th' | 'en' }) {
-  const ref = useRef<HTMLElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: ref,
-    offset: ['start end', 'end start'],
-  });
-  const blockY = useTransform(scrollYProgress, [0, 1], ['80px', '-40px']);
-  const decoY1 = useTransform(scrollYProgress, [0, 1], ['-30px', '60px']);
-  const decoY2 = useTransform(scrollYProgress, [0, 1], ['40px', '-80px']);
-  const decoRotate = useTransform(scrollYProgress, [0, 1], [0, 18]);
-
-  return (
-    <section ref={ref} className="relative pb-32 overflow-hidden">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-        {/* parallax decorations */}
-        <motion.div
-          aria-hidden
-          style={{ y: decoY1, rotate: decoRotate }}
-          className="pointer-events-none absolute -top-12 -left-8 w-32 h-32 rounded-3xl border border-[var(--color-line-strong)]"
-        />
-        <motion.div
-          aria-hidden
-          style={{ y: decoY2 }}
-          className="pointer-events-none absolute top-20 -right-12 w-24 h-24 rounded-full bg-[var(--color-accent-soft)] blur-2xl"
-        />
-
-        <motion.div style={{ y: blockY }}>
-          <PrivacyBlock t={t} locale={locale} />
-        </motion.div>
-      </div>
-    </section>
-  );
-}
-
-/* ─────────── pieces ─────────── */
-
-function AnimatedHeadline({ locale, t }: { locale: 'th' | 'en'; t: { heading1: string; heading2: string; heading3: string; tagline: string } }) {
-  const lines = [t.heading1, t.heading2, t.heading3];
-  return (
-    <span className="block">
-      {lines.map((line, i) => (
-        <motion.span
-          key={`${locale}-${i}`}
-          initial={{ opacity: 0, y: 28 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 + i * 0.1, duration: 0.7, ease: EASE }}
-          className={cn(
-            'block',
-            i === 1 && 'text-[var(--color-ink-3)]',
-          )}
-        >
-          {line}
-        </motion.span>
-      ))}
-      <motion.span
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.7, duration: 0.6 }}
-        className="block mt-4 text-[15px] sm:text-[17px] font-medium text-[var(--color-ink-3)] tracking-[-0.005em]"
-        style={{ letterSpacing: '0' }}
-      >
-        — {t.tagline}
-      </motion.span>
-    </span>
-  );
-}
-
-function PrincipleChip({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-2 text-[12.5px] font-medium text-[var(--color-ink-2)] tracking-[-0.005em]">
-      <span className="text-[var(--color-ink)]">{icon}</span>
-      {label}
-    </span>
-  );
-}
-
-function HeroSearch({
+function ConciergeSearch({
   value, onChange, placeholder, resultCount, locale, t,
 }: {
   value: string;
@@ -378,52 +296,11 @@ function HeroSearch({
   locale: 'th' | 'en';
   t: ReturnType<typeof useLanguage>['t'];
 }) {
-  const [focused, setFocused] = useState(false);
-
-  const quick: { label: string; query: string }[] = [
-    { label: t.tools['file-converter'].title, query: locale === 'th' ? 'แปลงไฟล์' : 'convert' },
-    { label: t.tools['bgrm'].title, query: locale === 'th' ? 'ลบพื้นหลัง' : 'background' },
-    { label: t.tools['qr-generator'].title, query: 'qr' },
-    { label: t.tools['pdf-tools'].title, query: 'pdf' },
-    { label: t.tools['password-generator'].title, query: locale === 'th' ? 'รหัสผ่าน' : 'password' },
-  ];
-
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.7, duration: 0.65, ease: EASE }}
-      className="relative mt-5 sm:mt-6 max-w-2xl mx-auto"
-    >
-      {/* glow halo when focused */}
-      <motion.div
-        aria-hidden
-        animate={{
-          opacity: focused ? 0.7 : 0.35,
-          scale: focused ? 1.04 : 1,
-        }}
-        transition={{ duration: 0.5, ease: EASE }}
-        className="absolute -inset-4 -z-10 rounded-full bg-[var(--color-accent-soft)] blur-2xl"
-      />
-      <motion.div
-        aria-hidden
-        animate={{
-          opacity: focused ? 1 : 0,
-        }}
-        transition={{ duration: 0.4 }}
-        className="absolute -inset-1 -z-10 rounded-full bg-gradient-to-r from-[var(--color-accent)] via-[var(--color-accent)] to-[var(--color-accent-deep)] blur-md"
-      />
-
-      <div
-        className={cn(
-          'relative flex items-center bg-white rounded-full border transition-all duration-300',
-          focused
-            ? 'border-[var(--color-ink-2)] shadow-deep'
-            : 'border-[var(--color-line-strong)] shadow-lift'
-        )}
-      >
-        <div className="absolute inset-y-0 left-0 pl-5 sm:pl-6 flex items-center pointer-events-none text-[var(--color-ink-2)]">
-          <Search className="w-4 h-4 sm:w-5 sm:h-5" strokeWidth={2.2} />
+    <div className="relative mt-6 w-full max-w-lg">
+      <div className="reception-desk">
+        <div className="pl-4 sm:pl-5 text-[var(--color-ink-3)] pointer-events-none">
+          <Search className="w-4 h-4" strokeWidth={2.2} />
         </div>
         <input
           type="search"
@@ -431,387 +308,125 @@ function HeroSearch({
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
-          autoFocus
           value={value}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Escape') onChange('');
-            if (e.key === 'Enter' && value) {
-              const target = document.getElementById('tools');
-              target?.scrollIntoView({ behavior: 'smooth' });
+            if (e.key === 'Enter') {
+              document.getElementById('directory')?.scrollIntoView({ behavior: 'smooth' });
             }
           }}
           placeholder={placeholder}
-          className="w-full h-14 sm:h-16 pl-14 sm:pl-16 pr-4 rounded-full bg-transparent text-[15px] sm:text-[16px] text-[var(--color-ink-2)] placeholder:text-[var(--color-ink-3)] focus:outline-none focus-visible:outline-none tracking-[-0.005em]"
-          style={{ outline: 'none' }}
+          className="w-full h-14 sm:h-16 px-3 bg-transparent text-[15px] sm:text-[16px] focus:outline-none"
+          aria-label={t.common.search}
         />
-
-        {/* result count + clear */}
-        <div className="flex items-center gap-1 pr-2.5">
-          <AnimatePresence mode="popLayout">
-            {value && (
-              <motion.span
-                key="count"
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.85 }}
-                transition={{ duration: 0.25, ease: EASE }}
-                className="hidden sm:inline-flex items-center gap-1.5 mr-1 px-3 py-1.5 rounded-full bg-[var(--color-surface-2)] text-[var(--color-ink-2)] text-[12px] font-mono font-medium tracking-[0.04em]"
-              >
-                <span className="font-semibold tabular-nums">{resultCount}</span>
-                <span className="text-[var(--color-ink-3)]">
-                  {locale === 'th' ? 'ผลลัพธ์' : resultCount === 1 ? 'result' : 'results'}
-                </span>
-              </motion.span>
-            )}
-          </AnimatePresence>
-
+        <div className="flex items-center gap-1 pr-2">
+          {value && (
+            <span className="hidden sm:inline font-mono text-[11px] text-[var(--color-ink-3)] pr-2 tabular-nums">
+              {resultCount} {t.common.rooms}
+            </span>
+          )}
           {value ? (
-            <motion.button
-              key="clear"
+            <button
               type="button"
-              initial={{ opacity: 0, scale: 0.85 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.85 }}
               onClick={() => onChange('')}
               aria-label="Clear search"
-              className="inline-flex items-center justify-center w-11 h-11 rounded-full text-[var(--color-ink-3)] hover:text-[var(--color-ink-2)] hover:bg-[var(--color-surface-2)] transition-colors"
+              className="inline-flex items-center justify-center w-11 h-11 text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
             >
               <X className="w-4 h-4" strokeWidth={2.2} />
-            </motion.button>
+            </button>
           ) : (
-            <Link
-              href="#tools"
-              aria-label="Browse tools"
-              className="inline-flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 mr-1 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] hover:bg-[var(--color-accent-deep)] transition-colors duration-300"
+            <a
+              href="#directory"
+              className="inline-flex items-center justify-center w-11 h-11 mr-1 bg-[var(--color-accent)] text-[var(--color-ink-2)] hover:bg-[var(--color-accent-deep)]"
+              aria-label={t.common.directory}
             >
               <ArrowUpRight className="w-4 h-4" strokeWidth={2.4} />
-            </Link>
+            </a>
           )}
         </div>
       </div>
-
-      {/* quick-pick chips */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.85, duration: 0.5, ease: EASE }}
-        className="mt-3.5 flex flex-wrap items-center justify-center gap-1.5"
-      >
-        <span className="font-mono text-[11px] tracking-[0.18em] uppercase text-[var(--color-ink-3)] mr-1">
-          {locale === 'th' ? 'ลอง' : 'Try'}
-        </span>
-        {quick.map((q) => (
-          <button
-            key={q.query}
-            onClick={() => onChange(q.query)}
-            className="px-3 py-1.5 rounded-full bg-white border border-[var(--color-line)] text-[12.5px] font-medium text-[var(--color-ink)] hover:border-[var(--color-ink-2)] hover:text-[var(--color-ink-2)] transition-all duration-300"
-          >
-            {q.label}
-          </button>
-        ))}
-      </motion.div>
-    </motion.div>
+    </div>
   );
 }
 
-function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (s: string) => void; placeholder: string }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: EASE }}
-      className="relative w-full lg:w-[26rem]"
-    >
-      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-[var(--color-ink-3)]">
-        <Search className="w-4 h-4" strokeWidth={2.2} />
-      </div>
-      <input
-        type="search"
-        autoComplete="off"
-        autoCorrect="off"
-        autoCapitalize="off"
-        spellCheck={false}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') onChange('');
-        }}
-        placeholder={placeholder}
-        className="w-full h-12 pl-11 pr-11 rounded-full bg-[var(--color-surface)] border border-[var(--color-line)] text-[14px] text-[var(--color-ink)] placeholder:text-[var(--color-ink-4)] focus:outline-none focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/15 transition-all duration-300"
-      />
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange('')}
-          aria-label="Clear search"
-          className="absolute inset-y-0 right-0 pr-4 flex items-center text-[var(--color-ink-3)] hover:text-[var(--color-accent)] transition-colors"
-        >
-          <X className="w-4 h-4" strokeWidth={2.2} />
-        </button>
-      )}
-    </motion.div>
-  );
-}
-
-function RecentRow({ t, locale }: { t: ReturnType<typeof useLanguage>['t']; locale: 'th' | 'en' }) {
+function RecentRooms({ t, locale }: { t: ReturnType<typeof useLanguage>['t']; locale: 'th' | 'en' }) {
   const recents = useRecentTools();
   const tools = recents
     .map((slug) => getTool(slug))
     .filter((x): x is ToolDef => Boolean(x))
     .slice(0, 5);
-
   if (tools.length === 0) return null;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: EASE }}
-      className="mb-8 flex flex-wrap items-center gap-2"
-    >
-      <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold tracking-[0.1em] uppercase text-[var(--color-ink-4)] mr-1">
+    <div className="mb-5 flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-[var(--color-ink-3)] mr-1">
         <Clock3 className="w-3.5 h-3.5" strokeWidth={2.2} />
-        {t.common.recentTools}
+        {t.common.lastRooms}
       </span>
-      {tools.map((tool) => {
-        const Icon = tool.icon;
-        return (
-          <Link
-            key={tool.slug}
-            href={'/' + tool.slug}
-            className="inline-flex items-center gap-2 pl-2.5 pr-3.5 py-1.5 rounded-full bg-white border border-[var(--color-line)] text-[12.5px] font-medium text-[var(--color-ink)] hover:border-[var(--color-ink-2)] hover:text-[var(--color-ink-2)] transition-all duration-300"
-          >
-            <Icon className="w-3.5 h-3.5 text-[var(--color-ink-3)]" strokeWidth={2} />
-            {toolText(locale, tool.slug).title}
-          </Link>
-        );
-      })}
-    </motion.div>
+      {tools.map((tool) => (
+        <Link
+          key={tool.slug}
+          href={'/' + tool.slug}
+          className="inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 bg-white border border-[var(--color-line)] text-[12.5px] font-medium text-[var(--color-ink)] hover:border-[var(--color-ink)] min-h-11 sm:min-h-0"
+        >
+          <span className="font-mono text-[10px] text-[var(--color-ink-3)]">{roomCode(tool.slug)}</span>
+          {toolText(locale, tool.slug).title}
+        </Link>
+      ))}
+    </div>
   );
 }
 
-function CategoryTabs({
-  categories, active, onChange,
+function DirRow({ item, newLabel }: { item: Listed; newLabel: string }) {
+  const Icon = item.def.icon;
+  return (
+    <Link href={item.href} className="dir-row group">
+      <span className="dir-code">{item.room}</span>
+      <span className="min-w-0">
+        <span className="dir-name">
+          {item.title}
+          {(item.def as { isNew?: boolean }).isNew && (
+            <span className="ml-2 font-mono text-[10px] text-[var(--color-accent-deep)]">{newLabel}</span>
+          )}
+        </span>
+        <span className="dir-desc truncate">{item.desc}</span>
+      </span>
+      <span className="inline-flex items-center gap-3">
+        <Icon className="w-4 h-4 text-[var(--color-ink-3)] hidden sm:block" strokeWidth={1.8} />
+        <span className="dir-lamp" />
+      </span>
+    </Link>
+  );
+}
+
+function SuiteRow({
+  item, enterLabel, newLabel,
 }: {
-  categories: { key: Category; label: string }[];
-  active: Category;
-  onChange: (c: Category) => void;
+  item: Listed;
+  enterLabel: string;
+  newLabel: string;
 }) {
+  const Icon = item.def.icon;
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {categories.map((c) => {
-        const on = c.key === active;
-        return (
-          <motion.button
-            key={c.key}
-            onClick={() => onChange(c.key)}
-            whileTap={{ scale: 0.97 }}
-            className={cn(
-              'relative px-4 py-2 rounded-full text-[13px] font-medium tracking-[-0.01em] transition-colors duration-300',
-              on
-                ? 'text-white'
-                : 'text-[var(--color-ink-2)] hover:text-[var(--color-ink)] hover:bg-[var(--color-surface)]'
-            )}
-          >
-            {on && (
-              <motion.span
-                layoutId="cat-indicator"
-                className="absolute inset-0 rounded-full bg-[var(--color-ink)] -z-0"
-                transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-              />
-            )}
-            <span className="relative z-10">{c.label}</span>
-          </motion.button>
-        );
-      })}
-    </div>
-  );
-}
-
-function ToolCard({
-  index, href, title, desc, icon, tryLabel, isNew, newLabel,
-}: {
-  index: number;
-  href: string;
-  title: string;
-  desc: string;
-  icon: React.ReactNode;
-  tryLabel: string;
-  isNew?: boolean;
-  newLabel?: string;
-}) {
-  return (
-    <motion.div
-      variants={item}
-      className="group relative bg-white hover:bg-[var(--color-ink)] transition-colors duration-500"
-    >
-      <Link
-        href={href}
-        className="relative h-full flex flex-col p-7 sm:p-8"
-      >
-        <div className="relative flex items-start justify-between mb-10">
-          <span className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-[var(--color-surface-2)] text-[var(--color-ink)] border border-[var(--color-line)] group-hover:bg-[var(--color-accent)] group-hover:text-[var(--color-ink-2)] group-hover:border-[var(--color-accent)] transition-all duration-500">
-            {icon}
-          </span>
-          <span className="flex items-center gap-2 mt-2">
-            {isNew && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] text-[10px] font-bold tracking-[0.08em] uppercase">
-                {newLabel}
-              </span>
-            )}
-            <span className="font-mono text-[10.5px] tracking-[0.18em] text-[var(--color-ink-4)] group-hover:text-[var(--color-accent)] transition-colors duration-500">
-              {String(index + 1).padStart(2, '0')}
-            </span>
-          </span>
-        </div>
-
-        <h3 className="relative text-[17px] sm:text-[18px] font-semibold tracking-[-0.02em] text-[var(--color-ink)] group-hover:text-white mb-2.5 transition-colors duration-500">
-          {title}
-        </h3>
-        <p className="relative text-[13.5px] text-[var(--color-ink-3)] group-hover:text-white/65 leading-[1.55] tracking-[-0.005em] flex-grow transition-colors duration-500">
-          {desc}
-        </p>
-
-        <div className="relative mt-8 flex items-center gap-1.5 text-[12.5px] font-semibold tracking-[-0.01em] text-[var(--color-ink)] group-hover:text-[var(--color-accent)] transition-colors duration-500">
-          {tryLabel}
-          <ArrowUpRight className="w-3.5 h-3.5 transition-transform duration-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" strokeWidth={2.2} />
-        </div>
-      </Link>
-    </motion.div>
-  );
-}
-
-function Marquee({ items }: { items: readonly string[] }) {
-  const repeated = [...items, ...items, ...items, ...items];
-  return (
-    <div className="relative overflow-hidden border-y border-[var(--color-line)] bg-[var(--color-ink)] py-5">
-      <div className="marquee-track gap-12 px-6">
-        {repeated.map((label, i) => (
-          <span key={i} className="inline-flex items-center gap-4 text-[13px] font-medium tracking-[-0.005em] whitespace-nowrap text-white">
-            {label}
-            <span className="w-1 h-1 rounded-full bg-[var(--color-accent)]" aria-hidden />
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PrivacyBlock({ t, locale }: { t: ReturnType<typeof useLanguage>['t']; locale: 'th' | 'en' }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 24 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.3 }}
-      transition={{ duration: 0.6, ease: EASE }}
-      className="relative overflow-hidden rounded-3xl bg-[var(--color-ink)] text-[var(--color-base)] grain"
-    >
-      <div className="absolute inset-0 gradient-ink" aria-hidden />
-      <div className="relative grid md:grid-cols-[1.2fr_1fr] gap-0">
-        <div className="p-10 sm:p-14 lg:p-16 border-b md:border-b-0 md:border-r border-white/10">
-          <p className="kicker text-[var(--color-accent)] mb-5">
-            {t.home.privacyTitle}
-          </p>
-          <h3 className="display-2 text-[2rem] sm:text-[2.5rem] leading-[1.05] text-white">
-            {locale === 'th'
-              ? 'ทุกอย่างทำงานในเบราว์เซอร์ของคุณ'
-              : 'Everything runs inside your browser.'}
-          </h3>
-          <p className="mt-6 text-[15px] text-white/70 leading-[1.6] tracking-[-0.005em] max-w-md">
-            {t.home.privacyBody}
-          </p>
-
-          <ul className="mt-10 space-y-4 text-[14px]">
-            {[
-              locale === 'th' ? 'ไม่มีบัญชีให้สมัคร' : 'No accounts. Ever.',
-              locale === 'th' ? 'ไม่มีคุกกี้ติดตาม' : 'No tracking cookies.',
-              locale === 'th' ? 'เปิดได้เร็ว ใช้ได้ทันที' : 'Loads fast. Works instantly.',
-            ].map((line, i) => (
-              <motion.li
-                key={i}
-                initial={{ opacity: 0, x: -8 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.1 * i, duration: 0.45, ease: EASE }}
-                className="flex items-center gap-4 text-white/85 tracking-[-0.005em]"
-              >
-                <span className="text-[var(--color-accent)] font-mono text-[10.5px] tracking-[0.16em]">
-                  {String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="w-6 h-px bg-white/30" />
-                <span>{line}</span>
-              </motion.li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="relative p-10 sm:p-14 lg:p-16 flex flex-col justify-between">
-          <div>
-            <p className="kicker text-[var(--color-accent)] mb-5">
-              {t.home.ctaTitle}
-            </p>
-            <p className="text-[19px] sm:text-[22px] leading-[1.4] tracking-[-0.015em] font-medium text-white">
-              {t.home.ctaBody}
-            </p>
-          </div>
-
-          <div className="mt-10 flex flex-wrap gap-2">
-            <Link
-              href="#tools"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] text-[13.5px] font-semibold tracking-[-0.01em] hover:bg-[var(--color-accent-deep)] transition-colors duration-300"
-            >
-              {t.common.tryNow}
-              <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
-            </Link>
-            <Link
-              href="/file-converter"
-              className="inline-flex items-center gap-2 px-5 py-3 rounded-full border border-white/20 text-white text-[13.5px] font-semibold tracking-[-0.01em] hover:border-white hover:bg-white/5 transition-colors duration-300"
-            >
-              {t.nav.fileConverter}
-            </Link>
-          </div>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function ParallaxAmbient({ bgY, midY }: { bgY: MotionValue<string>; midY: MotionValue<string> }) {
-  return (
-    <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* deep layer — slowest, very subtle warm tint */}
-      <motion.div
-        style={{ y: bgY }}
-        className="absolute inset-0"
-      >
-        <div className="absolute top-[10%] left-[8%] w-[420px] h-[420px] rounded-full bg-[var(--color-accent-soft)] blur-[140px] opacity-60" />
-        <div className="absolute bottom-[5%] right-[10%] w-[480px] h-[480px] rounded-full bg-[var(--color-surface-2)] blur-[140px] opacity-90" />
-      </motion.div>
-
-      {/* mid layer */}
-      <motion.div
-        style={{ y: midY }}
-        className="absolute inset-0"
-      >
-        <div className="absolute top-[30%] right-[20%] w-[280px] h-[280px] rounded-full bg-[var(--color-accent-soft)] blur-[120px] opacity-50" />
-      </motion.div>
-
-      {/* foreground geometric accents */}
-      <motion.div
-        style={{ y: midY }}
-        className="absolute top-24 right-12 hidden lg:block"
-      >
-        <div className="w-16 h-16 rounded-2xl border border-[var(--color-line-strong)] rotate-12" />
-      </motion.div>
-      <motion.div
-        style={{ y: bgY }}
-        className="absolute bottom-32 left-16 hidden lg:block"
-      >
-        <div className="w-12 h-12 rounded-full border border-[var(--color-accent)]/40" />
-      </motion.div>
-    </div>
+    <Link href={item.href} className="dir-suite group">
+      <span className="dir-icon">
+        <Icon className="w-5 h-5" strokeWidth={1.8} />
+      </span>
+      <span className="min-w-0">
+        <span className="dir-code">{item.room}</span>
+        <span className="dir-name mt-1">
+          {item.title}
+          {(item.def as { isNew?: boolean }).isNew && (
+            <span className="ml-2 font-mono text-[10px] text-[var(--color-accent)]">{newLabel}</span>
+          )}
+        </span>
+        <span className="dir-desc">{item.desc}</span>
+      </span>
+      <span className="dir-enter inline-flex items-center gap-1.5">
+        {enterLabel}
+        <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={2.2} />
+      </span>
+    </Link>
   );
 }

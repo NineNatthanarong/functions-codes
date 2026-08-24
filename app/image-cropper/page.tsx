@@ -354,7 +354,7 @@ export default function ImageCropperPage() {
                         role="button"
                         tabIndex={0}
                         aria-label={tt.uploadTitle}
-                        className={`rounded-3xl border-2 border-dashed transition-all p-12 text-center cursor-pointer group hover:border-[var(--color-wine-400)] hover:bg-[var(--color-wine-50)]/50 ${dragOver ? 'border-[var(--color-wine-400)] bg-[var(--color-wine-50)]/50' : 'border-[var(--color-wine-200)] bg-white'}`}
+                        className={`border-2 border-dashed transition-all p-12 text-center cursor-pointer group hover:border-[var(--color-ink)] hover:bg-[var(--color-surface-2)] ${dragOver ? 'border-[var(--color-accent)] bg-[var(--color-accent-soft)]' : 'border-[var(--color-ink-3)] bg-white'}`}
                         onClick={() => fileRef.current?.click()}
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' || e.key === ' ') {

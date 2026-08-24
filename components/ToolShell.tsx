@@ -7,8 +7,9 @@ import { motion, useScroll, useTransform } from 'framer-motion';
 import { ArrowLeft, ArrowUpRight } from 'lucide-react';
 import { useLanguage, useT } from '@/lib/i18n/LanguageProvider';
 import { translations } from '@/lib/i18n/translations';
-import { getRelatedTools } from '@/lib/tools';
+import { getRelatedTools, getTool } from '@/lib/tools';
 import { recordToolVisit } from '@/lib/useRecentTools';
+import { FLOOR_ID, floorKeyForSlug, roomCode } from '@/lib/office';
 
 type ToolShellProps = {
   icon: ReactNode;
@@ -29,14 +30,24 @@ const widthMap = {
   xwide: 'max-w-7xl',
 };
 
-const EASE = [0.25, 1, 0.5, 1] as const;
-
 export default function ToolShell({
   icon, title, subtitle, kicker, width = 'wide', children, actions,
 }: ToolShellProps) {
   const t = useT();
+  const { locale } = useLanguage();
   const pathname = usePathname();
   const slug = pathname?.replace(/^\//, '') ?? '';
+  const tool = getTool(slug);
+  const floorKey = tool ? floorKeyForSlug(tool.slug) : 'all';
+  const floorNames: Record<string, string> = {
+    all: t.common.lobby,
+    file: t.home.categoryFile,
+    image: t.home.categoryImage,
+    dev: t.home.categoryDev,
+    write: t.home.categoryWrite,
+    audio: t.home.categoryAudio,
+    fun: t.home.categoryFun,
+  };
 
   useEffect(() => {
     if (slug) recordToolVisit(slug);
@@ -47,99 +58,58 @@ export default function ToolShell({
     target: heroRef,
     offset: ['start start', 'end start'],
   });
-  const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '-15%']);
-  const heroOpacity = useTransform(scrollYProgress, [0, 1], [1, 0.4]);
-  const decoY = useTransform(scrollYProgress, [0, 1], ['0%', '60%']);
-  const decoRot = useTransform(scrollYProgress, [0, 1], [0, 22]);
+  const heroY = useTransform(scrollYProgress, [0, 1], ['0%', '-8%']);
 
   return (
-    <div className="relative pt-8 sm:pt-12 pb-24 overflow-hidden">
+    <div className="relative pt-8 sm:pt-12 pb-24">
       <div className={`relative ${widthMap[width]} mx-auto px-4 sm:px-6 lg:px-8`}>
-        <div className="mb-8">
+        <div className="mb-8 flex flex-wrap items-center gap-3">
           <Link
             href="/"
-            className="group inline-flex items-center gap-1.5 text-[12px] font-medium tracking-[-0.01em] text-[var(--color-ink-3)] hover:text-[var(--color-accent)] transition-colors duration-300"
+            className="group inline-flex items-center gap-1.5 min-h-11 text-[13px] font-medium text-[var(--color-ink-3)] hover:text-[var(--color-ink)]"
           >
-            <motion.span
-              whileHover={{ x: -2 }}
-              transition={{ type: 'spring', stiffness: 420, damping: 22 }}
-              className="inline-flex items-center gap-1.5"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2.2} />
-              {t.common.home}
-            </motion.span>
+            <ArrowLeft className="w-3.5 h-3.5" strokeWidth={2.2} />
+            {t.common.lobby}
           </Link>
+          <span className="font-mono text-[11px] text-[var(--color-ink-3)] tracking-[0.04em]">
+            {FLOOR_ID[floorKey]} · {floorNames[floorKey]}
+            {tool ? ` · ${roomCode(tool.slug)}` : ''}
+          </span>
         </div>
 
         <motion.div
           ref={heroRef}
-          style={{ y: heroY, opacity: heroOpacity }}
-          className="relative mb-12 sm:mb-16 flex flex-col md:flex-row md:items-end md:justify-between gap-8"
+          style={{ y: heroY }}
+          className="relative mb-10 sm:mb-14 flex flex-col md:flex-row md:items-end md:justify-between gap-8"
         >
-          {/* parallax decoration behind the title */}
-          <motion.div
-            aria-hidden
-            style={{ y: decoY, rotate: decoRot }}
-            className="pointer-events-none absolute -top-6 -right-2 hidden md:block w-24 h-24 rounded-2xl border border-[var(--color-line-strong)]"
-          />
-
           <div className="relative flex items-start gap-5">
-            <motion.span
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.5, ease: EASE }}
-              className="hidden sm:inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[var(--color-ink-2)] text-[var(--color-accent)] flex-shrink-0"
-            >
+            <span className="hidden sm:inline-flex items-center justify-center w-12 h-12 bg-[var(--color-ink-2)] text-[var(--color-accent)] flex-shrink-0">
               {icon}
-            </motion.span>
+            </span>
             <div className="flex-1 min-w-0">
-              {kicker && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, ease: EASE }}
-                  className="kicker text-[var(--color-ink-3)] mb-3"
-                >
-                  {kicker}
-                </motion.div>
+              {(kicker || tool) && (
+                <p className="kicker text-[var(--color-ink-3)] mb-3">
+                  {kicker ?? floorNames[floorKey]}
+                </p>
               )}
-              <motion.h1
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: EASE }}
-                className="display-2 text-[2rem] sm:text-[2.75rem] text-[var(--color-ink-2)]"
-              >
+              <h1 className="display-2 text-[2rem] sm:text-[2.5rem] text-[var(--color-ink-2)]">
                 {title}
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.55, ease: EASE, delay: 0.08 }}
-                className="mt-4 text-[15px] sm:text-[16px] text-[var(--color-ink-3)] max-w-2xl leading-[1.55] tracking-[-0.005em]"
-              >
+              </h1>
+              <p className="mt-4 text-[15px] sm:text-[16px] text-[var(--color-ink-3)] max-w-2xl leading-[1.6]">
                 {subtitle}
-              </motion.p>
+              </p>
             </div>
           </div>
           {actions && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, ease: EASE, delay: 0.15 }}
-              className="relative flex items-center gap-2 flex-shrink-0"
-            >
+            <div className="relative flex items-center gap-2 flex-shrink-0">
               {actions}
-            </motion.div>
+            </div>
           )}
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.18, duration: 0.55, ease: EASE }}
-        >
+        <div>
           {children}
-        </motion.div>
+        </div>
 
         <RelatedTools slug={slug} />
       </div>
@@ -154,8 +124,8 @@ function RelatedTools({ slug }: { slug: string }) {
 
   return (
     <div className="mt-20 pt-10 border-t border-[var(--color-line)]">
-      <p className="kicker text-[var(--color-ink-3)] mb-6">{t.common.relatedTools}</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <p className="kicker text-[var(--color-ink-3)] mb-6">{t.common.onThisFloor}</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-[var(--color-line)] border border-[var(--color-line)]">
         {related.map((tool) => {
           const text = (translations[locale].tools as Record<string, { title?: string; desc?: string }>)[tool.slug] ?? {};
           const Icon = tool.icon;
@@ -163,7 +133,7 @@ function RelatedTools({ slug }: { slug: string }) {
             <Link
               key={tool.slug}
               href={'/' + tool.slug}
-              className="group flex items-center gap-3.5 p-4 rounded-2xl bg-[var(--color-surface)] border border-[var(--color-line)] hover:border-[var(--color-ink-2)] transition-colors duration-300"
+              className="group flex items-center gap-3.5 p-4 bg-[var(--color-surface)] hover:bg-white min-h-16"
             >
               <span className="inline-flex items-center justify-center w-9 h-9 rounded-xl bg-white border border-[var(--color-line)] text-[var(--color-ink)] group-hover:bg-[var(--color-accent)] group-hover:border-[var(--color-accent)] group-hover:text-[var(--color-ink-2)] transition-colors duration-300 flex-shrink-0">
                 <Icon className="w-4 h-4" strokeWidth={1.9} />
@@ -190,7 +160,7 @@ function RelatedTools({ slug }: { slug: string }) {
 export function ToolCard({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
     <div
-      className={`relative bg-[var(--color-surface)] rounded-2xl border border-[var(--color-line)] p-6 sm:p-8 ${className}`}
+      className={`relative bg-[var(--color-surface)] border border-[var(--color-line)] p-6 sm:p-8 ${className}`}
     >
       {children}
     </div>
@@ -214,7 +184,7 @@ export function PrimaryButton({
       whileHover={disabled ? undefined : { scale: 1.015 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 420, damping: 22 }}
-      className={`relative inline-flex items-center justify-center gap-2 px-5 py-3 rounded-full bg-[var(--color-accent)] text-[var(--color-ink-2)] text-[13.5px] font-semibold tracking-[-0.01em] hover:bg-[var(--color-accent-deep)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-300 ${className}`}
+      className={`relative inline-flex items-center justify-center gap-2 px-5 py-3 min-h-11 bg-[var(--color-accent)] text-[var(--color-ink-2)] text-[13.5px] font-semibold tracking-[-0.01em] hover:bg-[var(--color-accent-deep)] disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
       {children}
     </motion.button>
@@ -237,7 +207,7 @@ export function SecondaryButton({
       whileHover={disabled ? undefined : { scale: 1.015 }}
       whileTap={disabled ? undefined : { scale: 0.98 }}
       transition={{ type: 'spring', stiffness: 420, damping: 22 }}
-      className={`relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-white text-[var(--color-ink-2)] text-[13px] font-semibold tracking-[-0.01em] border border-[var(--color-line-strong)] hover:border-[var(--color-ink-2)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-300 ${className}`}
+      className={`relative inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-11 bg-white text-[var(--color-ink-2)] text-[13px] font-semibold tracking-[-0.01em] border border-[var(--color-line-strong)] hover:border-[var(--color-ink-2)] disabled:opacity-40 disabled:cursor-not-allowed ${className}`}
     >
       {children}
     </motion.button>
@@ -307,7 +277,7 @@ export function SegmentedControl<T extends string>({
 }) {
   const id = useId();
   return (
-    <div className="inline-flex p-1 rounded-full bg-[var(--color-surface-2)] border border-[var(--color-line)]">
+    <div className="inline-flex p-1 bg-[var(--color-surface-2)] border border-[var(--color-line)]">
       {options.map((opt) => {
         const active = opt.value === value;
         return (
@@ -315,12 +285,12 @@ export function SegmentedControl<T extends string>({
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
-            className={`relative px-3.5 py-1.5 rounded-full text-[12.5px] font-semibold tracking-[-0.01em] transition-colors duration-300 ${active ? 'text-white' : 'text-[var(--color-ink)] hover:text-[var(--color-ink-2)]'}`}
+            className={`relative px-3.5 py-1.5 min-h-11 text-[12.5px] font-semibold tracking-[-0.01em] ${active ? 'text-white' : 'text-[var(--color-ink)] hover:text-[var(--color-ink-2)]'}`}
           >
             {active && (
               <motion.span
                 layoutId={`seg-pill-${id}`}
-                className="absolute inset-0 rounded-full bg-[var(--color-ink-2)] -z-0"
+                className="absolute inset-0 bg-[var(--color-ink-2)] -z-0"
                 transition={{ type: 'spring', stiffness: 420, damping: 30 }}
               />
             )}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-24T00:00:00.000Z",
+  "title": "Design System: functions.codes",
+  "extensions": {
+    "colorMeta": {
+      "tower": { "role": "primary", "displayName": "Tower Night", "canonical": "#0c1222" },
+      "brass": { "role": "secondary", "displayName": "Tungsten Brass", "canonical": "#fca311" },
+      "stone": { "role": "neutral", "displayName": "Cool Stone", "canonical": "#eef1f5" }
+    },
+    "motion": [
+      { "name": "ease-out-expo", "value": "cubic-bezier(0.16, 1, 0.3, 1)", "purpose": "Elevator doors and LED." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [],
+  "narrative": {
+    "northStar": "The Private Tower",
+    "overview": "Pixel architecture, human type. Dusk high-rise lobby; lit offices upstairs.",
+    "keyCharacteristics": [
+      "Pixel décor, never pixel type",
+      "Elevator is the one gimmick",
+      "Directory board, not a card grid"
+    ],
+    "rules": [
+      { "name": "The Readable Pixel Rule", "body": "Pixel is décor. Type is never bitmap.", "section": "typography" },
+      { "name": "The Cool Stone Rule", "body": "No cream/sand/beige body.", "section": "colors" },
+      { "name": "The One Gimmick Rule", "body": "Elevator only. Never block a tool.", "section": "components" }
+    ],
+    "dos": ["Do keep Inter + IBM Plex Sans Thai at 15px+ for all readable text."],
+    "donts": ["Don't use pixel fonts on headings, body, or forms."]
+  }
+}
