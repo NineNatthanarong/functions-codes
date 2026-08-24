@@ -185,6 +185,7 @@ export default function SpinWheelPage() {
                         >
                             {segments.map((seg, i) => {
                                 const mid = (seg.start + seg.end) / 2;
+                                const upsideDown = mid > 90 && mid < 270;
                                 return (
                                     <div
                                         key={i}
@@ -194,7 +195,11 @@ export default function SpinWheelPage() {
                                         <span
                                             title={seg.label}
                                             className="mt-6 text-[12px] sm:text-[13px] font-semibold tracking-tight max-w-[120px] truncate text-center"
-                                            style={{ color: '#faf6f3', transform: `rotate(90deg) translateY(0)`, transformOrigin: 'center' }}
+                                            style={{
+                                                color: '#faf6f3',
+                                                transform: upsideDown ? 'rotate(-90deg)' : 'rotate(90deg)',
+                                                transformOrigin: 'center',
+                                            }}
                                         >
                                             {seg.label}
                                         </span>

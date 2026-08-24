@@ -107,7 +107,10 @@ export default function DiffViewer() {
 
     const copyResult = async () => {
         try {
-            await navigator.clipboard.writeText(diffResult.map((part) => part.value).join(''));
+            // Copy the new document (unchanged + added), not a concatenation of
+            // both sides — joining every part doubled removed+added text.
+            const text = diffResult.filter((part) => !part.removed).map((part) => part.value).join('');
+            await navigator.clipboard.writeText(text);
             toast.success(t.common.copied);
         } catch {
             toast.error(t.common.errorTryAgain);

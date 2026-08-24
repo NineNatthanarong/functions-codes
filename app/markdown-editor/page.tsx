@@ -61,15 +61,26 @@ export default function MarkdownEditor() {
     const [pdfBusy, setPdfBusy] = useState(false);
     const dirtyRef = useRef(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const draftCheckedRef = useRef(false);
 
     useEffect(() => {
+        if (draftCheckedRef.current) return;
+        draftCheckedRef.current = true;
         const saved = localStorage.getItem('markdown-draft');
         if (saved) {
+            dirtyRef.current = true;
             setMarkdown(saved);
             toast.success(tt.loadedToast);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // First paint uses the SSR default (Thai). Once locale hydrates, swap in
+    // the matching sample unless the user (or a saved draft) already edited.
+    useEffect(() => {
+        if (dirtyRef.current) return;
+        setMarkdown(tt.defaultText);
+    }, [tt.defaultText]);
 
     useEffect(() => {
         // Only persist after the user has actually edited, so the sample text

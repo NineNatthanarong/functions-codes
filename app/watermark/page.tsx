@@ -171,7 +171,10 @@ export default function WatermarkPage() {
         const mime = file.type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
         const ext = mime === 'image/jpeg' ? 'jpg' : 'png';
         exportCanvas.toBlob((blob) => {
-            if (!blob) return;
+            if (!blob) {
+                toast.error(t.common.errorTryAgain);
+                return;
+            }
             const link = document.createElement('a');
             link.download = `watermarked_${file.name.replace(/\.[^.]+$/, '')}.${ext}`;
             link.href = URL.createObjectURL(blob);

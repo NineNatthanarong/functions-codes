@@ -58,7 +58,7 @@ export default function ConversionList({ files: initialFiles, onReset }: Convers
             const fileType = item.file.type.toLowerCase();
             const fileName = item.file.name.toLowerCase();
 
-            if (fileType === 'application/pdf') {
+            if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
                 results = await convertPdfToImages(item.file, targetFormat);
             } else if (fileType === 'image/heic' || fileName.endsWith('.heic')) {
                 results = await convertHeicToImage(item.file, targetFormat);

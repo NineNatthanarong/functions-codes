@@ -185,6 +185,7 @@ export default function UrlTools() {
             setPlain(decodeWith(mode, v));
             setDecodeFailed(false);
         } catch {
+            setPlain('');
             setDecodeFailed(v.trim().length > 0);
         }
     };

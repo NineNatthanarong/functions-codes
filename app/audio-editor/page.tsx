@@ -45,16 +45,29 @@ export default function AudioEditor() {
     const regionsPluginRef = useRef<ReturnType<typeof RegionsPlugin.create> | null>(null);
     const objectUrlRef = useRef<string | null>(null);
     const loadIdRef = useRef(0);
-
+    const ttRef = useRef(tt);
+    const sRef = useRef(s);
     useEffect(() => {
-        if (!waveformRef.current) return;
+        ttRef.current = tt;
+        sRef.current = s;
+    });
+
+    // WaveSurfer needs a mounted container. The waveform node only exists after
+    // a file is chosen, so create/load here — not on first paint.
+    useEffect(() => {
+        if (!audioFile) return;
+        const container = waveformRef.current;
+        if (!container) return;
+
+        const loadId = loadIdRef.current;
+        let cancelled = false;
 
         const rootStyles = getComputedStyle(document.documentElement);
         const themeColor = (name: string, fallback: string) =>
             rootStyles.getPropertyValue(name).trim() || fallback;
 
         const wavesurfer = WaveSurfer.create({
-            container: waveformRef.current,
+            container,
             waveColor: themeColor('--color-wine-300', '#9ca3af'),
             progressColor: themeColor('--color-wine-700', '#14213d'),
             cursorColor: themeColor('--color-wine-800', '#000000'),
@@ -63,11 +76,11 @@ export default function AudioEditor() {
             barRadius: 2,
             height: 120,
             normalize: true,
-            backend: 'WebAudio',
         });
 
         const regions = wavesurfer.registerPlugin(RegionsPlugin.create());
         regionsPluginRef.current = regions;
+        wavesurferRef.current = wavesurfer;
 
         wavesurfer.on('ready', () => { setDuration(wavesurfer.getDuration()); setIsLoading(false); });
         wavesurfer.on('play', () => setIsPlaying(true));
@@ -85,12 +98,30 @@ export default function AudioEditor() {
             if (regions.getRegions().length === 0) { setHasRegion(false); setRegionBounds(null); }
         });
 
-        wavesurferRef.current = wavesurfer;
+        const url = URL.createObjectURL(audioFile);
+        objectUrlRef.current = url;
+
+        wavesurfer.load(url).then(() => {
+            if (cancelled || loadIdRef.current !== loadId) return;
+            toast.success(ttRef.current.loadedToast);
+        }).catch((err) => {
+            if (cancelled || loadIdRef.current !== loadId) return;
+            console.error(err);
+            toast.error(sRef.current.loadError);
+            setAudioFile(null);
+        }).finally(() => {
+            if (!cancelled && loadIdRef.current === loadId) setIsLoading(false);
+        });
+
         return () => {
+            cancelled = true;
             wavesurfer.destroy();
-            if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
+            wavesurferRef.current = null;
+            regionsPluginRef.current = null;
+            URL.revokeObjectURL(url);
+            if (objectUrlRef.current === url) objectUrlRef.current = null;
         };
-    }, []);
+    }, [audioFile]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -115,39 +146,19 @@ export default function AudioEditor() {
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [audioFile, isLoading]);
 
-    const loadFile = async (file: File) => {
+    const loadFile = (file: File) => {
         if (!file.type.startsWith('audio/') && !AUDIO_EXTENSIONS.test(file.name)) {
             toast.error(t.common.pleaseSelectAudio);
             return;
         }
-        const wavesurfer = wavesurferRef.current;
-        if (!wavesurfer) return;
-
-        const loadId = ++loadIdRef.current;
+        loadIdRef.current += 1;
         setAudioFile(file);
         setIsLoading(true);
+        setIsPlaying(false);
         setHasRegion(false);
         setRegionBounds(null);
         setCurrentTime(0);
-        regionsPluginRef.current?.clearRegions();
-
-        if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
-        const url = URL.createObjectURL(file);
-        objectUrlRef.current = url;
-
-        try {
-            await wavesurfer.load(url);
-            if (loadIdRef.current !== loadId) return;
-            toast.success(tt.loadedToast);
-        } catch (err) {
-            if (loadIdRef.current !== loadId) return;
-            console.error(err);
-            if (objectUrlRef.current === url) { URL.revokeObjectURL(url); objectUrlRef.current = null; }
-            setAudioFile(null);
-            toast.error(s.loadError);
-        } finally {
-            if (loadIdRef.current === loadId) setIsLoading(false);
-        }
+        setDuration(0);
     };
 
     const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,22 +270,23 @@ export default function AudioEditor() {
     };
 
     const clearAudio = () => {
-        loadIdRef.current++;
+        loadIdRef.current += 1;
         setAudioFile(null);
         setHasRegion(false);
         setRegionBounds(null);
         setCurrentTime(0);
         setDuration(0);
+        setIsPlaying(false);
         setIsLoading(false);
-        wavesurferRef.current?.empty();
-        regionsPluginRef.current?.clearRegions();
-        if (objectUrlRef.current) { URL.revokeObjectURL(objectUrlRef.current); objectUrlRef.current = null; }
     };
 
     const formatTime = (sec: number) => {
-        const m = Math.floor(sec / 60);
-        const s = Math.floor(sec % 60);
-        return `${m}:${s.toString().padStart(2, '0')}`;
+        const t = Math.max(0, Number.isFinite(sec) ? sec : 0);
+        const m = Math.floor(t / 60);
+        const s = t - m * 60;
+        if (t === 0) return '0:00';
+        if (m === 0) return `0:${s.toFixed(1).padStart(4, '0')}`;
+        return `${m}:${Math.floor(s).toString().padStart(2, '0')}`;
     };
 
     return (
@@ -299,7 +311,7 @@ export default function AudioEditor() {
                             if (file) loadFile(file);
                         }}
                     >
-                        <input id="audio-upload" type="file" accept="audio/*" className="hidden" onChange={handleUpload} />
+                        <input id="audio-upload" type="file" accept="audio/*,.mp3,.wav,.ogg,.oga,.m4a,.aac,.flac,.opus,.weba" className="hidden" onChange={handleUpload} />
                         <motion.div
                             animate={{ y: [0, -4, 0] }}
                             transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
@@ -336,12 +348,14 @@ export default function AudioEditor() {
                         </div>
 
                         <div className="bg-[var(--color-wine-50)] rounded-2xl p-6 border border-[var(--color-wine-100)]">
-                            {isLoading && (
-                                <div className="flex items-center justify-center h-32">
-                                    <div className="w-7 h-7 border-4 border-[var(--color-wine-700)] border-t-transparent rounded-full animate-spin" />
-                                </div>
-                            )}
-                            <div ref={waveformRef} className={isLoading ? 'hidden' : ''} />
+                            <div className="relative min-h-[120px]">
+                                {isLoading && (
+                                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-wine-50)]">
+                                        <div className="w-7 h-7 border-4 border-[var(--color-wine-700)] border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                )}
+                                <div ref={waveformRef} />
+                            </div>
                             <div className="flex items-center justify-between mt-4 text-[12.5px] text-[var(--color-smoke-600)]">
                                 <span className="font-mono">{formatTime(currentTime)}</span>
                                 <span className="font-mono">{formatTime(duration)}</span>

@@ -73,15 +73,40 @@ export default function ColorPickerPage() {
     const [supported, setSupported] = useState<boolean | null>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
+    const sRef = useRef(s);
+    useEffect(() => { sRef.current = s; });
 
     useEffect(() => {
         setSupported('EyeDropper' in window);
     }, []);
 
-    // Revoke the object URL when it is replaced or on unmount
+    // Draw after the canvas is mounted (it only exists once imgUrl is set).
     useEffect(() => {
         if (!imgUrl) return;
-        return () => URL.revokeObjectURL(imgUrl);
+        let cancelled = false;
+        const img = new Image();
+        img.onload = () => {
+            if (cancelled) return;
+            const canvas = canvasRef.current;
+            if (!canvas) return;
+            const maxW = 800;
+            const ratio = img.width > maxW ? maxW / img.width : 1;
+            canvas.width = img.width * ratio;
+            canvas.height = img.height * ratio;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            if (!ctx) return;
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        };
+        img.onerror = () => {
+            if (cancelled) return;
+            toast.error(sRef.current.loadFailed);
+            setImgUrl(null);
+        };
+        img.src = imgUrl;
+        return () => {
+            cancelled = true;
+            URL.revokeObjectURL(imgUrl);
+        };
     }, [imgUrl]);
 
     const copy = async (val: string) => {
@@ -111,30 +136,11 @@ export default function ColorPickerPage() {
     };
 
     const onUpload = (file: File) => {
-        if (!file.type.startsWith('image/')) {
+        if (!file.type.startsWith('image/') && !/\.(png|jpe?g|gif|webp|bmp|avif|heic)$/i.test(file.name)) {
             toast.error(s.notImage);
             return;
         }
-        const url = URL.createObjectURL(file);
-        setImgUrl(url);
-
-        const img = new Image();
-        img.onload = () => {
-            const canvas = canvasRef.current;
-            if (!canvas) return;
-            const maxW = 800;
-            const ratio = img.width > maxW ? maxW / img.width : 1;
-            canvas.width = img.width * ratio;
-            canvas.height = img.height * ratio;
-            const ctx = canvas.getContext('2d', { willReadFrequently: true });
-            if (!ctx) return;
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        };
-        img.onerror = () => {
-            toast.error(s.loadFailed);
-            setImgUrl((prev) => (prev === url ? null : prev));
-        };
-        img.src = url;
+        setImgUrl(URL.createObjectURL(file));
     };
 
     // Paste an image straight from the clipboard

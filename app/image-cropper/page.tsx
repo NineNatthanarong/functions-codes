@@ -284,7 +284,7 @@ export default function ImageCropperPage() {
         setOutH(Math.round(crop.h * srcH));
     }, [crop, imgEl, srcW, srcH]);
 
-    const reset = () => setCrop({ x: 0, y: 0, w: 1, h: 1 });
+    const reset = () => setCrop(applyRatio(ratio, { x: 0, y: 0, w: 1, h: 1 }, srcW, srcH));
 
     const download = () => {
         if (!imgEl || !file || exporting) return;
@@ -303,6 +303,10 @@ export default function ImageCropperPage() {
         if (!ctx) return;
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
+        if (format === 'image/jpeg') {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, targetW, targetH);
+        }
         ctx.drawImage(source, sx, sy, sw, sh, 0, 0, targetW, targetH);
 
         setExporting(true);
@@ -398,7 +402,7 @@ export default function ImageCropperPage() {
                                 src={displayUrl ?? ''}
                                 alt="source"
                                 draggable={false}
-                                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                                className="absolute inset-0 w-full h-full max-w-none max-h-none object-fill pointer-events-none"
                             />
 
                             {/* dim overlay */}
@@ -426,7 +430,7 @@ export default function ImageCropperPage() {
                                         src={displayUrl ?? ''}
                                         alt=""
                                         draggable={false}
-                                        className="absolute object-contain"
+                                        className="absolute max-w-none max-h-none"
                                         style={{
                                             width: `${100 / crop.w}%`,
                                             height: `${100 / crop.h}%`,

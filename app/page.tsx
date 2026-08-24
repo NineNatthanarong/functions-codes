@@ -53,8 +53,8 @@ function tokenize(q: string): string[] {
 }
 
 const container = {
-  hidden: { opacity: 0 },
-  show: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.08 } },
+  hidden: {},
+  show: { transition: { staggerChildren: 0.02, delayChildren: 0.04 } },
 };
 
 const item = {
@@ -251,7 +251,6 @@ function ToolsSection({
         <CategoryTabs categories={categories} active={category} onChange={setCategory} />
 
         <motion.div
-          key={`${category}-${searchQuery}`}
           variants={container}
           initial="hidden"
           animate="show"

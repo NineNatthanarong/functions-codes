@@ -37,6 +37,7 @@ export default function PDFTools() {
             encrypted: 'มีรหัสผ่าน — ปลดล็อกไฟล์ก่อนอัปโหลด',
             alreadyOptimized: 'ไฟล์ถูกบีบอัดอยู่แล้ว ไม่สามารถลดขนาดได้อีก',
             page: 'หน้า',
+            compressNeedOne: 'อัปโหลดเพียง 1 ไฟล์เพื่อบีบอัด',
         }
         : {
             selectAll: 'Select all',
@@ -47,6 +48,7 @@ export default function PDFTools() {
             encrypted: 'is password-protected — unlock it before uploading',
             alreadyOptimized: 'PDF is already optimized — size could not be reduced',
             page: 'Page',
+            compressNeedOne: 'Upload exactly one PDF to compress',
         };
     const [activeTab, setActiveTab] = useState<Tab>('merge');
     const [uploadedPDFs, setUploadedPDFs] = useState<UploadedPDF[]>([]);
@@ -60,7 +62,7 @@ export default function PDFTools() {
         const newPDFs: UploadedPDF[] = [];
         for (let i = 0; i < accepted.length; i++) {
             const file = accepted[i];
-            if (file.type !== 'application/pdf') {
+            if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
                 toast.error(`${file.name} ${tt.notPdf}`);
                 continue;
             }
@@ -77,7 +79,7 @@ export default function PDFTools() {
             }
         }
         if (newPDFs.length > 0) {
-            setUploadedPDFs((prev) => [...prev, ...newPDFs]);
+            setUploadedPDFs((prev) => (activeTab === 'merge' ? [...prev, ...newPDFs] : newPDFs));
             setSelectedPages([]);
             toast.success(`${newPDFs.length} ${tt.uploadedToast}`);
         }
@@ -138,7 +140,7 @@ export default function PDFTools() {
     };
 
     const compressPDF = async () => {
-        if (uploadedPDFs.length !== 1) { toast.error(tt.splitNeedOne); return; }
+        if (uploadedPDFs.length !== 1) { toast.error(s.compressNeedOne); return; }
         setIsProcessing(true);
         try {
             const buf = await uploadedPDFs[0].file.arrayBuffer();
@@ -189,7 +191,8 @@ export default function PDFTools() {
     const requirementHint =
         uploadedPDFs.length === 0 ? null
             : activeTab === 'merge' && uploadedPDFs.length < 2 ? tt.mergeNeed
-            : activeTab !== 'merge' && uploadedPDFs.length !== 1 ? tt.splitNeedOne
+            : activeTab === 'split' && uploadedPDFs.length !== 1 ? tt.splitNeedOne
+            : activeTab === 'compress' && uploadedPDFs.length !== 1 ? s.compressNeedOne
             : activeTab === 'split' && selectedPages.length === 0 ? tt.selectAtLeastOne
             : null;
 

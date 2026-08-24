@@ -34,6 +34,7 @@ const STRINGS = {
         pasted: 'วางข้อความเรียบร้อย',
         pasteError: 'วางไม่สำเร็จ — ลองกด Ctrl+V ในช่องข้อความแทน',
         copied: 'คัดลอกเรียบร้อย',
+        copyFailed: 'คัดลอกไม่สำเร็จ',
         copyAria: 'คัดลอกผลลัพธ์',
         chars: 'ตัวอักษร',
         words: 'คำ',
@@ -67,6 +68,7 @@ const STRINGS = {
         pasted: 'Pasted from clipboard',
         pasteError: 'Could not paste — try pressing Ctrl+V in the text box instead',
         copied: 'Copied to clipboard',
+        copyFailed: 'Could not copy to clipboard',
         copyAria: 'Copy result',
         chars: 'characters',
         words: 'words',
@@ -200,7 +202,7 @@ export default function TextCasePage() {
                 setJustCopied((prev) => (prev === id ? null : prev));
             }, 1600);
         } catch {
-            toast.error(s.pasteError);
+            toast.error(s.copyFailed);
         }
     };
 

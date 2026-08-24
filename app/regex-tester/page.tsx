@@ -333,7 +333,7 @@ export default function RegexTester() {
 
     const isError = outcome.status === 'error';
     const replaced = outcome.status === 'ok' ? outcome.replaced : null;
-    const canCopyReplaced = replaced !== null && replaced !== '';
+    const canCopyReplaced = replaced !== null;
 
     const copyReplaced = async () => {
         if (!canCopyReplaced || replaced === null) return;

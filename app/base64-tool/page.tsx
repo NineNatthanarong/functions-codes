@@ -253,9 +253,11 @@ export default function Base64Tool() {
                 setPlain(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
                 setDecodeError(null);
             } catch {
+                setPlain('');
                 setDecodeError('utf8');
             }
         } catch {
+            setPlain('');
             setDecodeError('base64');
         }
     };
@@ -459,7 +461,7 @@ export default function Base64Tool() {
                                             </span>
                                         </span>
                                     )}
-                                    <GhostButton onClick={() => copyValue(b64)} disabled={!b64 || !!decodeError}>
+                                    <GhostButton onClick={() => copyValue(b64)} disabled={!b64 || decodeError === 'base64'}>
                                         <Copy className="w-3.5 h-3.5" />
                                         {s.copy}
                                     </GhostButton>

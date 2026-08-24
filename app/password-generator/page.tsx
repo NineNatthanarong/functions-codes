@@ -207,7 +207,7 @@ export default function PasswordGenerator() {
                                 onChange={(e) => {
                                     const v = parseInt(e.target.value, 10);
                                     if (Number.isNaN(v)) return;
-                                    setLength(Math.min(64, v));
+                                    setLength(Math.min(64, Math.max(4, v)));
                                 }}
                                 onBlur={() => setLength((v) => Math.min(64, Math.max(4, v)))}
                                 aria-label={tt.length}
