@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import PdfPageGrid from './PdfPageGrid';
 import { motion } from 'framer-motion';
 import { Upload, Download, Trash2, FilePlus, Scissors, Minimize2, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -38,6 +39,8 @@ export default function PDFTools() {
             alreadyOptimized: 'ไฟล์ถูกบีบอัดอยู่แล้ว ไม่สามารถลดขนาดได้อีก',
             page: 'หน้า',
             compressNeedOne: 'อัปโหลดเพียง 1 ไฟล์เพื่อบีบอัด',
+            previewLoading: 'กำลังเปิดหน้า…',
+            selectedCount: (n: number) => `เลือกแล้ว ${n} หน้า`,
         }
         : {
             selectAll: 'Select all',
@@ -49,6 +52,8 @@ export default function PDFTools() {
             alreadyOptimized: 'PDF is already optimized — size could not be reduced',
             page: 'Page',
             compressNeedOne: 'Upload exactly one PDF to compress',
+            previewLoading: 'Opening pages…',
+            selectedCount: (n: number) => `${n} selected`,
         };
     const [activeTab, setActiveTab] = useState<Tab>('merge');
     const [uploadedPDFs, setUploadedPDFs] = useState<UploadedPDF[]>([]);
@@ -339,8 +344,13 @@ export default function PDFTools() {
 
                 {activeTab === 'split' && uploadedPDFs.length === 1 && (
                     <div className="mb-6">
-                        <div className="flex items-center justify-between mb-3">
-                            <h3 className="text-[12.5px] font-semibold tracking-wide text-[var(--color-wine-700)]">{tt.selectPages}</h3>
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <h3 className="text-[13px] font-semibold text-[var(--color-ink)]">
+                                {tt.selectPages}
+                                <span className="ml-2 font-normal text-[var(--color-ink-3)]">
+                                    {' · '}{s.selectedCount(selectedPages.length)}
+                                </span>
+                            </h3>
                             <div className="flex items-center gap-1.5">
                                 <GhostButton
                                     onClick={() => setSelectedPages(Array.from({ length: uploadedPDFs[0].pageCount }, (_, i) => i))}
@@ -353,28 +363,15 @@ export default function PDFTools() {
                                 </GhostButton>
                             </div>
                         </div>
-                        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2.5">
-                            {Array.from({ length: uploadedPDFs[0].pageCount }, (_, i) => i).map((idx) => {
-                                const sel = selectedPages.includes(idx);
-                                return (
-                                    <motion.button
-                                        key={idx}
-                                        whileTap={{ scale: 0.92 }}
-                                        onClick={() => togglePage(idx)}
-                                        aria-pressed={sel}
-                                        aria-label={`${s.page} ${idx + 1}`}
-                                        className={cn(
-                                            'aspect-square rounded-xl border-[1.5px] font-semibold transition-all text-[13px]',
-                                            sel
-                                                ? 'border-[var(--color-wine-700)] bg-[var(--color-wine-700)] text-[var(--color-cream)]'
-                                                : 'border-[var(--color-wine-100)] bg-white text-[var(--color-wine-700)] hover:border-[var(--color-wine-300)]'
-                                        )}
-                                    >
-                                        {idx + 1}
-                                    </motion.button>
-                                );
-                            })}
-                        </div>
+                        <PdfPageGrid
+                            key={uploadedPDFs[0].id}
+                            file={uploadedPDFs[0].file}
+                            pageCount={uploadedPDFs[0].pageCount}
+                            selected={selectedPages}
+                            onToggle={togglePage}
+                            pageWord={s.page}
+                            loadingLabel={s.previewLoading}
+                        />
                     </div>
                 )}
 
