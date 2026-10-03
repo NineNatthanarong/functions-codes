@@ -141,7 +141,7 @@ export default function SpinWheelPage() {
 
         const winnerIdx = Math.floor(Math.random() * items.length);
         const w = items[winnerIdx];
-        const turns = 5 + Math.random() * 2;
+        const turns = 5 + Math.floor(Math.random() * 3);
         // conic-gradient(from 0deg) starts at the top — same place as the pointer —
         // so rotate until the winning segment center lands back at the top.
         const winnerCenter = winnerIdx * slice + slice / 2;
@@ -166,9 +166,9 @@ export default function SpinWheelPage() {
             width="wide"
         >
             <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] gap-6">
-                <ToolCard className="flex flex-col items-center justify-center">
+                <ToolCard className="min-w-0 flex flex-col items-center justify-center">
                     <div
-                        className={`relative w-[320px] h-[320px] sm:w-[400px] sm:h-[400px] ${!spinning && items.length >= 2 ? 'cursor-pointer' : ''}`}
+                        className={`relative w-full max-w-[320px] sm:max-w-[400px] aspect-square ${!spinning && items.length >= 2 ? 'cursor-pointer' : ''}`}
                         onClick={spin}
                     >
                         {/* Pointer */}
@@ -180,7 +180,7 @@ export default function SpinWheelPage() {
                         <motion.div
                             animate={{ rotate: angle }}
                             transition={{ duration: spinning ? 4 : 0, ease: [0.16, 0.84, 0.32, 1] }}
-                            className="absolute inset-0 rounded-full shadow-deep border-[6px] border-[var(--color-cream)]"
+                            className="absolute inset-0 overflow-hidden rounded-full shadow-deep border-[6px] border-[var(--color-cream)]"
                             style={{ background: conicGradient }}
                         >
                             {segments.map((seg, i) => {
@@ -246,7 +246,7 @@ export default function SpinWheelPage() {
                     </PrimaryButton>
                 </ToolCard>
 
-                <ToolCard>
+                <ToolCard className="min-w-0">
                     <div className="flex items-center justify-between mb-3">
                         <span className="text-[12.5px] font-semibold tracking-wide text-[var(--color-wine-700)]">
                             {tt.listLabel}
@@ -269,7 +269,7 @@ export default function SpinWheelPage() {
                             onKeyDown={(e) => e.key === 'Enter' && addItem()}
                             onPaste={handlePaste}
                             placeholder={s.placeholder}
-                            className="flex-1 h-11 px-4 rounded-2xl bg-white border-[1.5px] border-[var(--color-wine-100)] text-[14px] text-[var(--color-wine-800)] focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)]"
+                            className="min-w-0 flex-1 h-11 px-4 rounded-2xl bg-white border-[1.5px] border-[var(--color-wine-100)] text-[14px] text-[var(--color-wine-800)] focus:outline-none focus:border-[var(--color-wine-600)] focus:ring-4 focus:ring-[var(--color-wine-100)]"
                         />
                         <PrimaryButton onClick={addItem} disabled={spinning || !draft.trim()}>
                             <Plus className="w-4 h-4" />

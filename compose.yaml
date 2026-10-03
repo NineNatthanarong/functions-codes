@@ -1,0 +1,33 @@
+name: functions-codes
+
+services:
+  # Production build: `docker compose up -d --build`
+  app:
+    build:
+      context: .
+      target: runner
+    image: functions-codes:latest
+    container_name: functions-codes
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+
+  # Hot-reloading dev server: `docker compose --profile dev up dev`
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      target: dev
+    image: functions-codes:dev
+    container_name: functions-codes-dev
+    ports:
+      - "${DEV_PORT:-3001}:3000"
+    environment:
+      NODE_ENV: development
+      WATCHPACK_POLLING: "true"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next

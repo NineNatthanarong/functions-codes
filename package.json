@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",
@@ -18,7 +19,7 @@
     "file-saver": "^2.0.5",
     "framer-motion": "^12.23.24",
     "heic2any": "^0.0.4",
-    "html2canvas": "^1.4.1",
+    "html2canvas-pro": "^2.5.0",
     "jspdf": "^3.0.4",
     "jszip": "^3.10.1",
     "lucide-react": "^0.554.0",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
     "@types/diff": "^7.0.2",
@@ -45,6 +47,7 @@
     "@types/react-dom": "^19.1.9",
     "eslint": "^9",
     "eslint-config-next": "^16.0.10",
+    "jsqr": "^1.4.0",
     "tailwindcss": "^4",
     "typescript": "^5.9.2"
   }

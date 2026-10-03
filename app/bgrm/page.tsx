@@ -15,14 +15,14 @@ export default function BackgroundRemover() {
     const tt = t.pages.bgrm;
     const s = useMemo(() => locale === 'th' ? {
         pasteHint: 'หรือกด Ctrl+V เพื่อวางรูปจากคลิปบอร์ด',
-        aiNote: 'ครั้งแรกที่ใช้โหมด AI จะดาวน์โหลดโมเดล (~40MB) อาจใช้เวลาสักครู่',
+        aiNote: 'ครั้งแรกที่ใช้โหมด AI จะดาวน์โหลดโมเดลและรันไทม์ (~100MB) อาจใช้เวลาสักครู่',
         basicNote: 'โหมดธรรมดาจะลบเฉพาะพิกเซลสีเกือบขาว เหมาะกับพื้นหลังขาวล้วน',
         largeFile: 'ไฟล์ขนาดใหญ่ อาจใช้เวลาประมวลผลนานกว่าปกติ',
         newImage: 'อัปโหลดรูปใหม่',
         copyUnsupported: 'เบราว์เซอร์นี้ไม่รองรับการคัดลอกรูป',
     } : {
         pasteHint: 'or press Ctrl+V to paste an image from your clipboard',
-        aiNote: 'First AI run downloads a model (~40 MB) — it may take a moment.',
+        aiNote: 'First AI run downloads the model and runtime (~100 MB) — it may take a moment.',
         basicNote: 'Basic mode only removes near-white pixels — best for plain white backgrounds.',
         largeFile: 'Large file — processing may take longer than usual.',
         newImage: 'Upload a new image',

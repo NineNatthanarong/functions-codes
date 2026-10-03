@@ -1,0 +1,1 @@
+`colors.heic` is a synthetic 200 × 100 image: white background with red and blue rectangles. It was encoded with macOS `sips` from a locally generated PNG. It contains no personal data or third-party photography. The browser tests verify that the real HEIC decoder preserves the dimensions and colors.

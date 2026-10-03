@@ -156,19 +156,22 @@ export default function CsvJsonConverter() {
             if (hasHeader) {
                 const rawHeader = rows[0] ?? [];
                 const dataRows = rows.slice(1);
-                const seen = new Map<string, number>();
-                const keys = rawHeader.map((h, idx) => {
-                    let key = h.trim() === '' ? `field${idx + 1}` : h;
-                    const count = seen.get(key) ?? 0;
-                    seen.set(key, count + 1);
-                    if (count > 0) key = `${key}_${count + 1}`;
+                const usedKeys = new Set<string>();
+                const uniqueKey = (base: string) => {
+                    let key = base;
+                    let suffix = 2;
+                    while (usedKeys.has(key)) key = `${base}_${suffix++}`;
+                    usedKeys.add(key);
                     return key;
+                };
+                const keys = rawHeader.map((h, idx) => {
+                    return uniqueKey(h.trim() === '' ? `field${idx + 1}` : h);
                 });
                 const maxLen = dataRows.reduce((max, r) => Math.max(max, r.length), keys.length);
-                for (let k = keys.length; k < maxLen; k++) keys.push(`field${k + 1}`);
+                for (let k = keys.length; k < maxLen; k++) keys.push(uniqueKey(`field${k + 1}`));
 
                 const objects = dataRows.map((r) => {
-                    const obj: Record<string, unknown> = {};
+                    const obj: Record<string, unknown> = Object.create(null);
                     keys.forEach((key, idx) => {
                         const raw = idx < r.length ? r[idx] : '';
                         obj[key] = coerce ? coerceValue(raw) : raw;

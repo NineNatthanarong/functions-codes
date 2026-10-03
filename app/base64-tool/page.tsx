@@ -65,12 +65,14 @@ function normalizeBase64(raw: string): string {
         if (!/;base64$/i.test(header)) throw new Error('invalid-base64');
         payload = payload.slice(comma + 1);
     }
-    let s = payload.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
-    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s)) throw new Error('invalid-base64');
-    const rem = s.length % 4;
+    const s = payload.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+    const parts = s.match(/^([A-Za-z0-9+/]*)(={0,2})$/);
+    if (!parts) throw new Error('invalid-base64');
+    const rem = parts[1].length % 4;
     if (rem === 1) throw new Error('invalid-base64');
-    if (rem > 0) s += '='.repeat(4 - rem);
-    return s;
+    const padding = (4 - rem) % 4;
+    if (parts[2] && parts[2].length !== padding) throw new Error('invalid-base64');
+    return parts[1] + '='.repeat(padding);
 }
 
 function decodeBase64Loose(raw: string): Uint8Array {

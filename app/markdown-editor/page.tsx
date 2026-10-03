@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { GhostButton, PrimaryButton, SecondaryButton } from '@/components/ToolShell';
 
@@ -136,6 +135,9 @@ a { color: #552834; }
         setPdfBusy(true);
         toast.info(tt.pdfBuildingToast);
         try {
+            // Tailwind's production CSS uses lab()/oklch() colors, which the
+            // original html2canvas parser cannot render.
+            const { default: html2canvas } = await import('html2canvas-pro');
             const canvas = await html2canvas(element, {
                 scale: 2,
                 useCORS: true,

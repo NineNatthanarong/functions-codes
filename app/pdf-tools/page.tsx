@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import PdfPageGrid from './PdfPageGrid';
+import dynamic from 'next/dynamic';
 import { motion } from 'framer-motion';
 import { Upload, Download, Trash2, FilePlus, Scissors, Minimize2, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +9,9 @@ import { PDFDocument } from 'pdf-lib';
 import { cn } from '@/lib/utils';
 import { useT, useLanguage } from '@/lib/i18n/LanguageProvider';
 import ToolShell, { ToolCard, PrimaryButton, GhostButton } from '@/components/ToolShell';
+
+// pdfjs-dist touches browser-only globals (DOMMatrix) at import time, so keep it out of SSR
+const PdfPageGrid = dynamic(() => import('./PdfPageGrid'), { ssr: false });
 
 type Tab = 'merge' | 'split' | 'compress';
 

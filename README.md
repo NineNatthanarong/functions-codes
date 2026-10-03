@@ -20,6 +20,45 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Docker
+
+Production (standalone Next.js build, served on port 3000):
+
+```bash
+docker compose up -d --build
+```
+
+Use a different host port with `APP_PORT=8080 docker compose up -d --build`. Stop with `docker compose down`.
+
+Hot-reloading dev server (source is bind-mounted, served on port 3001):
+
+```bash
+docker compose --profile dev up --build dev
+```
+
+## Testing tools
+
+The Playwright suite covers all 31 tool pages in English on desktop and Thai at a mobile viewport, using Chromium and WebKit. Functional tests run in Chromium and verify conversion results and downloaded file contents, including images, HEIC, PDFs, QR codes, hashes, text, and trimmed WAV audio.
+
+```bash
+npx playwright install chromium webkit
+npm run test:e2e
+```
+
+Playwright starts a development server on port 3100, or reuses one already running there. Include the real AI background-removal model download and inference with:
+
+```bash
+RUN_NETWORK_TESTS=1 npm run test:e2e
+```
+
+To test an already running production server:
+
+```bash
+TEST_BASE_URL=http://127.0.0.1:3101 RUN_NETWORK_TESTS=1 npm run test:e2e
+```
+
+Results are written to `test-results/results.json`; failed tests also retain screenshots and browser traces. See [TOOL_REVIEW.md](TOOL_REVIEW.md) for the latest review findings and verification limits.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
@@ -93,4 +132,4 @@ Configure Nginx as a reverse proxy for your domain:
 ### Additional Notes
 - Monitor with `pm2 monit` or logs in `~/.pm2/logs`.
 - For production, consider environment variables (e.g., via `.env.local`) and security hardening.
-- If using Docker, wrap the app in a container for easier deployment.
+- If using Docker, see the [Docker](#docker) section; point the Nginx `proxy_pass` at the container's published port.
